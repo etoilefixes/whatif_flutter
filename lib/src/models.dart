@@ -287,6 +287,81 @@ class WorldPkgListResponse {
   }
 }
 
+class ModelProvider {
+  const ModelProvider({
+    required this.name,
+    required this.apiKey,
+    this.apiUrl,
+    this.models = const <String>[],
+  });
+
+  final String name;
+  final String apiKey;
+  final String? apiUrl;
+  final List<String> models;
+
+  bool get hasKey => apiKey.trim().isNotEmpty;
+
+  static const Map<String, String> defaultApiUrls = <String, String>{
+    'openai': 'https://api.openai.com/v1',
+    'dashscope': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    'anthropic': 'https://api.anthropic.com/v1',
+    'gemini': 'https://generativelanguage.googleapis.com/v1beta/openai',
+    'volcengine': 'https://ark.cn-beijing.volces.com/api/v3',
+  };
+
+  static const Map<String, List<String>> defaultModels = <String, List<String>>{
+    'openai': <String>['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'],
+    'dashscope': <String>['qwen3.5-flash', 'qwen3.5-plus', 'qwen-max'],
+    'anthropic': <String>['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022'],
+    'gemini': <String>['gemini-2.0-flash', 'gemini-2.5-pro-preview-05-06'],
+    'volcengine': <String>['doubao-1-5-pro-32k-250115', 'doubao-1-5-lite-32k-250115'],
+  };
+
+  static const List<String> knownProviders = <String>[
+    'openai',
+    'dashscope',
+    'anthropic',
+    'gemini',
+    'volcengine',
+  ];
+
+  factory ModelProvider.fromJson(Map<String, dynamic> json) {
+    final models = json['models'];
+    return ModelProvider(
+      name: json['name'] as String? ?? '',
+      apiKey: json['apiKey'] as String? ?? '',
+      apiUrl: json['apiUrl'] as String?,
+      models: models is List<dynamic>
+          ? models.whereType<String>().toList()
+          : const <String>[],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'apiKey': apiKey,
+      if (apiUrl != null && apiUrl!.trim().isNotEmpty) 'apiUrl': apiUrl,
+      if (models.isNotEmpty) 'models': models,
+    };
+  }
+
+  ModelProvider copyWith({
+    String? name,
+    String? apiKey,
+    String? apiUrl,
+    List<String>? models,
+  }) {
+    return ModelProvider(
+      name: name ?? this.name,
+      apiKey: apiKey ?? this.apiKey,
+      apiUrl: apiUrl ?? this.apiUrl,
+      models: models ?? this.models,
+    );
+  }
+}
+
 class LlmSlotConfig {
   const LlmSlotConfig({
     required this.model,

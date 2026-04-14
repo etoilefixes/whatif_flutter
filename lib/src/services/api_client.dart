@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../models.dart';
 import 'backend_api_contract.dart';
+import 'integrated_llm_client.dart';
 
 class ApiClient implements BackendApi {
   ApiClient({String baseUrl = 'http://127.0.0.1:8000', http.Client? client})
@@ -54,16 +55,38 @@ class ApiClient implements BackendApi {
   }
 
   @override
-  Future<void> updateApiKeys(Map<String, String> keys) async {
+  Future<void> updateModelProviders(List<ModelProvider> providers) async {
+    // Convert to the legacy format that the Python backend understands
+    final keys = <String, String>{};
+    for (final provider in providers) {
+      if (provider.hasKey) {
+        keys[provider.name] = provider.apiKey;
+      }
+    }
     await _request('/api/config/api-keys', method: 'PUT', body: {'keys': keys});
   }
 
   @override
-  Future<void> testApiKey(String provider, String key) async {
+  Future<void> testModelProvider(ModelProvider provider) async {
+    if (provider.apiUrl != null && provider.apiUrl!.trim().isNotEmpty) {
+      // Test via integrated client when custom URL is provided
+      final client = IntegratedLlmClient();
+      try {
+        await client.testProvider(
+          provider.name,
+          provider.apiKey,
+          apiBase: provider.apiUrl,
+          model: provider.models.isNotEmpty ? provider.models.first : null,
+        );
+      } finally {
+        client.dispose();
+      }
+      return;
+    }
     await _request(
       '/api/config/test-key',
       method: 'POST',
-      body: {'provider': provider, 'key': key},
+      body: {'provider': provider.name, 'key': provider.apiKey},
     );
   }
 

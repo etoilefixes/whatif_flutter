@@ -26,7 +26,7 @@ class AppController extends ChangeNotifier {
   AppPage page = AppPage.start;
 
   String locale = 'zh-CN';
-  Map<String, String> apiKeys = {};
+  List<ModelProvider> modelProviders = [];
   LlmConfigMap? llmConfig;
   String? currentPkgName;
   String? currentPkgFilename;
@@ -34,7 +34,9 @@ class AppController extends ChangeNotifier {
   String? runtimeError;
   VoiceConfig voiceConfig = VoiceConfig.defaults();
 
-  bool get hasApiKey => apiKeys.values.any((value) => value.trim().isNotEmpty);
+  bool get isIntegratedMode => api.modeLabel == 'integrated-dart';
+  bool get hasModelProvider =>
+      modelProviders.any((p) => p.hasKey);
   bool get backendUrlManaged =>
       runtime.managesBackend || !api.supportsBaseUrlOverride;
   String get backendModeLabel =>
@@ -54,7 +56,7 @@ class AppController extends ChangeNotifier {
     _didInitialize = true;
 
     locale = store.getLocale();
-    apiKeys = store.getApiKeys();
+    modelProviders = store.getModelProviders();
     llmConfig = store.getLlmConfig();
     voiceConfig = store.getVoiceConfig(locale);
 
@@ -104,28 +106,33 @@ class AppController extends ChangeNotifier {
     backendReachable = false;
     readyState = AppReadyState.loading;
 
-    for (var attempt = 0; attempt < 10; attempt += 1) {
-      if (await api.checkHealth()) {
-        backendReachable = true;
-        break;
+    // Integrated mode: no HTTP backend to check
+    if (isIntegratedMode) {
+      backendReachable = true;
+    } else {
+      for (var attempt = 0; attempt < 10; attempt += 1) {
+        if (await api.checkHealth()) {
+          backendReachable = true;
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 400));
       }
-      await Future<void>.delayed(const Duration(milliseconds: 400));
     }
 
     if (!backendReachable) {
-      readyState = hasApiKey
+      readyState = hasModelProvider
           ? AppReadyState.offline
           : AppReadyState.needsConfig;
       return;
     }
 
-    if (hasApiKey) {
+    if (hasModelProvider && !isIntegratedMode) {
       try {
-        await api.updateApiKeys(apiKeys);
+        await api.updateModelProviders(modelProviders);
       } catch (_) {}
     }
 
-    if (llmConfig != null) {
+    if (llmConfig != null && !isIntegratedMode) {
       try {
         await api.updateLlmConfig(llmConfig!);
       } catch (_) {}
@@ -147,7 +154,8 @@ class AppController extends ChangeNotifier {
       } catch (_) {}
     }
 
-    readyState = hasApiKey ? AppReadyState.ready : AppReadyState.needsConfig;
+    readyState =
+        hasModelProvider ? AppReadyState.ready : AppReadyState.needsConfig;
   }
 
   void openStart() {
@@ -192,17 +200,17 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> saveApiKeys(Map<String, String> next) async {
-    apiKeys = next;
-    await store.setApiKeys(next);
+  Future<void> saveModelProviders(List<ModelProvider> next) async {
+    modelProviders = next;
+    await store.setModelProviders(next);
 
-    if (backendReachable) {
+    if (backendReachable && !isIntegratedMode) {
       try {
-        await api.updateApiKeys(next);
+        await api.updateModelProviders(next);
       } catch (_) {}
     }
 
-    readyState = hasApiKey
+    readyState = hasModelProvider
         ? (backendReachable ? AppReadyState.ready : AppReadyState.offline)
         : AppReadyState.needsConfig;
     notifyListeners();
@@ -223,7 +231,7 @@ class AppController extends ChangeNotifier {
     llmConfig = next;
     await store.setLlmConfig(next);
 
-    if (backendReachable) {
+    if (backendReachable && !isIntegratedMode) {
       await api.updateLlmConfig(next);
     }
 
@@ -258,7 +266,7 @@ class AppController extends ChangeNotifier {
     currentPkgName = pkg.name;
     currentPkgFilename = pkg.filename;
     await store.setLastPkg(LastPkg(filename: pkg.filename, name: pkg.name));
-    readyState = hasApiKey ? AppReadyState.ready : AppReadyState.needsConfig;
+    readyState = hasModelProvider ? AppReadyState.ready : AppReadyState.needsConfig;
     page = AppPage.start;
     notifyListeners();
   }

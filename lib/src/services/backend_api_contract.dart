@@ -22,8 +22,8 @@ abstract class BackendApi {
 
   Future<bool> checkHealth();
 
-  Future<void> updateApiKeys(Map<String, String> keys);
-  Future<void> testApiKey(String provider, String key);
+  Future<void> updateModelProviders(List<ModelProvider> providers);
+  Future<void> testModelProvider(ModelProvider provider);
 
   Future<LlmConfigMap> getLlmConfig();
   Future<void> updateLlmConfig(LlmConfigMap config);

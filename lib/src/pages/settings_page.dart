@@ -19,16 +19,8 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  static const _providers = <String>[
-    'dashscope',
-    'anthropic',
-    'gemini',
-    'openai',
-    'volcengine',
-  ];
-
   late final TextEditingController _backendUrlController;
-  final Map<String, TextEditingController> _apiKeyControllers = {};
+  final List<_ProviderEditor> _providerEditors = [];
   final Map<String, TextEditingController> _modelControllers = {};
   final Map<String, TextEditingController> _temperatureControllers = {};
   final Map<String, TextEditingController> _budgetControllers = {};
@@ -37,11 +29,11 @@ class _SettingsPageState extends State<SettingsPage> {
   late VoiceConfig _voiceDraft;
   List<VoiceInfo> _voices = const <VoiceInfo>[];
 
-  bool _savingKeys = false;
+  bool _savingProviders = false;
   bool _savingConfig = false;
   bool _savingVoice = false;
   bool _loadingVoices = false;
-  String? _testingProvider;
+  String? _testingProviderName;
   String? _voiceError;
 
   @override
@@ -52,10 +44,8 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     _voiceDraft = widget.controller.voiceConfig;
 
-    for (final provider in _providers) {
-      _apiKeyControllers[provider] = TextEditingController(
-        text: widget.controller.apiKeys[provider] ?? '',
-      );
+    for (final provider in widget.controller.modelProviders) {
+      _providerEditors.add(_ProviderEditor.fromProvider(provider));
     }
 
     _bootstrapConfig();
@@ -151,16 +141,47 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
-  Future<void> _saveKeys() async {
+  // ── Provider Actions ─────────────────────────────────────────────
+
+  void _addProvider() {
     setState(() {
-      _savingKeys = true;
+      _providerEditors.add(_ProviderEditor(
+        name: '',
+        apiKey: '',
+        apiUrl: '',
+        modelsText: '',
+      ));
+    });
+  }
+
+  void _removeProvider(int index) {
+    setState(() {
+      _providerEditors[index].dispose();
+      _providerEditors.removeAt(index);
+    });
+  }
+
+  Future<void> _saveProviders() async {
+    setState(() {
+      _savingProviders = true;
     });
 
     try {
-      final keys = <String, String>{
-        for (final provider in _providers)
-          provider: _apiKeyControllers[provider]!.text.trim(),
-      };
+      final providers = _providerEditors.map((e) {
+        final models = e.modelsText
+            .split('\n')
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+        return ModelProvider(
+          name: e.nameController.text.trim(),
+          apiKey: e.apiKeyController.text.trim(),
+          apiUrl: e.apiUrlController.text.trim().isEmpty
+              ? null
+              : e.apiUrlController.text.trim(),
+          models: models,
+        );
+      }).where((p) => p.name.isNotEmpty).toList();
 
       if (!widget.controller.backendUrlManaged) {
         await widget.controller.updateBackendUrl(
@@ -169,7 +190,7 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       await widget.controller.retryConnection();
       _backendUrlController.text = widget.controller.api.baseUrl;
-      await widget.controller.saveApiKeys(keys);
+      await widget.controller.saveModelProviders(providers);
       await _loadVoices();
 
       if (!mounted) {
@@ -190,24 +211,39 @@ class _SettingsPageState extends State<SettingsPage> {
     } finally {
       if (mounted) {
         setState(() {
-          _savingKeys = false;
+          _savingProviders = false;
         });
       }
     }
   }
 
-  Future<void> _testProvider(String provider) async {
-    final key = _apiKeyControllers[provider]!.text.trim();
-    if (key.isEmpty || !widget.controller.api.supportsProviderTesting) {
+  Future<void> _testProvider(_ProviderEditor editor) async {
+    final name = editor.nameController.text.trim();
+    final apiKey = editor.apiKeyController.text.trim();
+    if (apiKey.isEmpty || !widget.controller.api.supportsProviderTesting) {
       return;
     }
 
+    final apiUrl = editor.apiUrlController.text.trim();
+    final models = editor.modelsText
+        .split('\n')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    final provider = ModelProvider(
+      name: name,
+      apiKey: apiKey,
+      apiUrl: apiUrl.isEmpty ? null : apiUrl,
+      models: models,
+    );
+
     setState(() {
-      _testingProvider = provider;
+      _testingProviderName = name;
     });
 
     try {
-      await widget.controller.api.testApiKey(provider, key);
+      await widget.controller.api.testModelProvider(provider);
       if (!mounted) {
         return;
       }
@@ -224,11 +260,13 @@ class _SettingsPageState extends State<SettingsPage> {
     } finally {
       if (mounted) {
         setState(() {
-          _testingProvider = null;
+          _testingProviderName = null;
         });
       }
     }
   }
+
+  // ── Config Actions ───────────────────────────────────────────────
 
   Future<void> _saveConfig() async {
     if (_localConfig == null) {
@@ -365,12 +403,14 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void dispose() {
     _backendUrlController.dispose();
-    for (final controller in _apiKeyControllers.values) {
-      controller.dispose();
+    for (final editor in _providerEditors) {
+      editor.dispose();
     }
     _disposeConfigControllers();
     super.dispose();
   }
+
+  // ── Build ────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -401,7 +441,7 @@ class _SettingsPageState extends State<SettingsPage> {
             child: TabBar(
               isScrollable: true,
               tabs: [
-                Tab(text: widget.strings.text('settings.tabApiKeys')),
+                Tab(text: widget.strings.text('settings.tabProviders')),
                 Tab(text: widget.strings.text('settings.tabModels')),
                 Tab(text: widget.strings.text('settings.tabVoice')),
                 Tab(text: widget.strings.text('settings.tabLanguage')),
@@ -411,7 +451,7 @@ class _SettingsPageState extends State<SettingsPage> {
           Expanded(
             child: TabBarView(
               children: [
-                _buildApiKeysTab(),
+                _buildProvidersTab(),
                 _buildModelConfigTab(),
                 _buildVoiceTab(),
                 _buildLanguageTab(),
@@ -423,7 +463,9 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _buildApiKeysTab() {
+  // ── Providers Tab ────────────────────────────────────────────────
+
+  Widget _buildProvidersTab() {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -469,68 +511,121 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: Text(widget.controller.runtimeError!),
                 ),
               ],
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _savingKeys ? null : _saveKeys,
-                  child: _savingKeys
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(widget.strings.text('settings.save')),
-                ),
-              ),
-              if (!widget.controller.api.supportsProviderTesting) ...[
-                const SizedBox(height: 10),
-                Text(
-                  'Provider key testing is unavailable in the integrated backend preview.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF94A2BD),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
         const SizedBox(height: 16),
-        for (final provider in _providers) ...[
-          _SectionCard(
-            title: provider,
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _apiKeyControllers[provider],
-                    obscureText: true,
-                    decoration: const InputDecoration(hintText: 'sk-...'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                FilledButton.tonal(
-                  onPressed:
-                      !widget.controller.api.supportsProviderTesting ||
-                          _testingProvider != null
-                      ? null
-                      : () => _testProvider(provider),
-                  child: _testingProvider == provider
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(widget.strings.text('settings.test')),
-                ),
-              ],
-            ),
-          ),
+        for (var i = 0; i < _providerEditors.length; i++) ...[
+          _buildProviderCard(i),
           const SizedBox(height: 12),
         ],
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _addProvider,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(widget.strings.text('settings.addProvider')),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: _savingProviders ? null : _saveProviders,
+            child: _savingProviders
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(widget.strings.text('settings.save')),
+          ),
+        ),
       ],
     );
   }
+
+  Widget _buildProviderCard(int index) {
+    final editor = _providerEditors[index];
+    final isKnown = ModelProvider.knownProviders.contains(
+      editor.nameController.text.trim().toLowerCase(),
+    );
+    final displayName = isKnown
+        ? editor.nameController.text.trim()
+        : widget.strings.text('settings.customProvider');
+
+    return _SectionCard(
+      title: displayName,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: editor.nameController,
+            decoration: InputDecoration(
+              labelText: widget.strings.text('settings.providerName'),
+              hintText: widget.strings.text('settings.providerNameHint'),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: editor.apiKeyController,
+            obscureText: true,
+            decoration: InputDecoration(
+              labelText: widget.strings.text('settings.apiKey'),
+              hintText: 'sk-...',
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: editor.apiUrlController,
+            decoration: InputDecoration(
+              labelText: widget.strings.text('settings.apiUrl'),
+              hintText: widget.strings.text('settings.apiUrlHint'),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: editor.modelsController,
+            maxLines: 3,
+            minLines: 1,
+            decoration: InputDecoration(
+              labelText: widget.strings.text('settings.models'),
+              hintText: widget.strings.text('settings.modelsHint'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              FilledButton.tonal(
+                onPressed:
+                    !widget.controller.api.supportsProviderTesting ||
+                        _testingProviderName != null
+                    ? null
+                    : () => _testProvider(editor),
+                child: _testingProviderName ==
+                        editor.nameController.text.trim()
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(widget.strings.text('settings.test')),
+              ),
+              const Spacer(),
+              IconButton.outlined(
+                onPressed: () => _removeProvider(index),
+                icon: const Icon(Icons.delete_outline_rounded),
+                tooltip: widget.strings.text('settings.removeProvider'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Model Config Tab ─────────────────────────────────────────────
 
   Widget _buildModelConfigTab() {
     if (_localConfig == null) {
@@ -583,6 +678,8 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
     );
   }
+
+  // ── Voice Tab ────────────────────────────────────────────────────
 
   Widget _buildVoiceTab() {
     final items = _voices.toList()
@@ -758,6 +855,8 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  // ── Language Tab ─────────────────────────────────────────────────
+
   Widget _buildLanguageTab() {
     return ListView(
       padding: const EdgeInsets.all(24),
@@ -777,6 +876,45 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+
+// ── Provider Editor Helper ─────────────────────────────────────────
+
+class _ProviderEditor {
+  _ProviderEditor({
+    required String name,
+    required String apiKey,
+    required String apiUrl,
+    required String modelsText,
+  })  : nameController = TextEditingController(text: name),
+        apiKeyController = TextEditingController(text: apiKey),
+        apiUrlController = TextEditingController(text: apiUrl),
+        modelsController = TextEditingController(text: modelsText);
+
+  factory _ProviderEditor.fromProvider(ModelProvider provider) {
+    return _ProviderEditor(
+      name: provider.name,
+      apiKey: provider.apiKey,
+      apiUrl: provider.apiUrl ?? '',
+      modelsText: provider.models.join('\n'),
+    );
+  }
+
+  final TextEditingController nameController;
+  final TextEditingController apiKeyController;
+  final TextEditingController apiUrlController;
+  final TextEditingController modelsController;
+
+  String get modelsText => modelsController.text;
+
+  void dispose() {
+    nameController.dispose();
+    apiKeyController.dispose();
+    apiUrlController.dispose();
+    modelsController.dispose();
+  }
+}
+
+// ── Shared Widgets ─────────────────────────────────────────────────
 
 class _SectionCard extends StatelessWidget {
   const _SectionCard({required this.title, required this.child});

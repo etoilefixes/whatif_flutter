@@ -46,3 +46,27 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Project-local tooling and downloadable dependencies
+cmdline-tools/
+.android-sdk/
+flutter_client/android_sdk/
+flutter_client/jdk-17/
+zh_core_web_sm-*.whl
+
+# Runtime data and generated content
+output/*
+!output/.gitkeep
+logs/dev/
+logs/**/*.jsonl
+!logs/**/.gitkeep
+saves/*
+!saves/.gitkeep
+data/novels/*.txt
+!data/novels/.gitkeep
+
+# Misc local folders
+archived/
+experiments/
+docs/cleanup/
+dissertation/

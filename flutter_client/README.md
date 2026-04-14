@@ -69,8 +69,6 @@ flutter pub get
 Copy-Item ..\whatif-original\backend\.env.example ..\whatif-original\backend\.env
 ```
 
-然后填写模型提供商 Key：
-
 ```env
 DASHSCOPE_API_KEY=your_key_here
 OPENAI_API_KEY=your_key_here

@@ -318,16 +318,16 @@ class LocalBridgePlanner {
 
   _SlotAccess? _slotAccess(LlmSlotConfig slot) {
     final provider = _provider(slot.model);
-    final apiKey = provider == null
+    final creds = provider == null
         ? null
-        : store.getApiKeys()[provider]?.trim();
+        : store.getProviderCredentials(provider);
     if (provider == null ||
-        apiKey == null ||
-        apiKey.isEmpty ||
-        !llmClient.supportsProvider(provider, apiBase: slot.apiBase)) {
+        creds == null ||
+        creds.apiKey.isEmpty ||
+        !llmClient.supportsProvider(provider, apiBase: slot.apiBase ?? creds.apiUrl)) {
       return null;
     }
-    return _SlotAccess(provider: provider, apiKey: apiKey);
+    return _SlotAccess(provider: provider, apiKey: creds.apiKey);
   }
 
   String? _provider(String model) {

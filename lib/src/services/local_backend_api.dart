@@ -126,11 +126,11 @@ class LocalBackendApi implements BackendApi {
   Future<bool> checkHealth() async => true;
 
   @override
-  Future<void> updateApiKeys(Map<String, String> keys) async {}
+  Future<void> updateModelProviders(List<ModelProvider> providers) async {}
 
   @override
-  Future<void> testApiKey(String provider, String key) async {
-    await narrativeGenerator.testProvider(provider, key);
+  Future<void> testModelProvider(ModelProvider provider) async {
+    await narrativeGenerator.testModelProvider(provider);
   }
 
   @override

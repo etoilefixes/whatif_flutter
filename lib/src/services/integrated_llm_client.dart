@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models.dart';
 import 'backend_api_contract.dart';
 
 class IntegratedLlmClient {
@@ -13,11 +14,17 @@ class IntegratedLlmClient {
   static const Map<String, String> _defaultBaseUrls = <String, String>{
     'openai': 'https://api.openai.com/v1',
     'dashscope': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    'anthropic': 'https://api.anthropic.com/v1',
+    'gemini': 'https://generativelanguage.googleapis.com/v1beta/openai',
+    'volcengine': 'https://ark.cn-beijing.volces.com/api/v3',
   };
 
   static const Map<String, String> _defaultTestModels = <String, String>{
     'openai': 'gpt-4o-mini',
     'dashscope': 'qwen3.5-flash',
+    'anthropic': 'claude-sonnet-4-20250514',
+    'gemini': 'gemini-2.0-flash',
+    'volcengine': 'doubao-1-5-pro-32k-250115',
   };
 
   bool supportsProvider(String provider, {String? apiBase}) {
@@ -50,6 +57,21 @@ class IntegratedLlmClient {
         },
         <String, String>{'role': 'user', 'content': 'ping'},
       ],
+    );
+  }
+
+  Future<void> testModelProvider(ModelProvider provider) async {
+    final apiBase = provider.apiUrl?.trim().isNotEmpty == true
+        ? provider.apiUrl!.trim()
+        : _defaultBaseUrls[provider.name];
+    final model = provider.models.isNotEmpty
+        ? provider.models.first
+        : _defaultTestModels[provider.name] ?? 'gpt-4o-mini';
+    await testProvider(
+      provider.name,
+      provider.apiKey,
+      apiBase: apiBase,
+      model: model,
     );
   }
 
