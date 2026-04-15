@@ -52,10 +52,17 @@ String? resolveProviderApiBase({
   String? customApiUrl,
 }) {
   final provided = customApiUrl?.trim();
-  final rawBase = provided != null && provided.isNotEmpty
-      ? provided
-      : ModelProvider.defaultApiUrls[provider.toLowerCase()];
-  return normalizeProviderApiBase(rawBase);
+  final normalizedCustom = normalizeProviderApiBase(provided);
+  if (normalizedCustom != null) {
+    return _completeKnownOfficialBase(
+      provider: provider,
+      normalizedBase: normalizedCustom,
+    );
+  }
+
+  return normalizeProviderApiBase(
+    ModelProvider.defaultApiUrls[provider.toLowerCase()],
+  );
 }
 
 String buildProviderModelsUrl({
@@ -146,4 +153,39 @@ List<String> parseModelIdsFromResponse(Object? response) {
 
   visitNode(response);
   return modelIds.toList(growable: false);
+}
+
+String _completeKnownOfficialBase({
+  required String provider,
+  required String normalizedBase,
+}) {
+  final uri = Uri.parse(normalizedBase);
+  final path = uri.path.replaceAll(RegExp(r'/+$'), '');
+  if (path.isNotEmpty) {
+    return normalizedBase;
+  }
+
+  final host = uri.host.toLowerCase();
+  final providerKey = provider.toLowerCase();
+  String? officialPath;
+
+  if (providerKey == 'openai' && host == 'api.openai.com') {
+    officialPath = '/v1';
+  } else if (providerKey == 'anthropic' && host == 'api.anthropic.com') {
+    officialPath = '/v1';
+  } else if (providerKey == 'gemini' &&
+      host == 'generativelanguage.googleapis.com') {
+    officialPath = '/v1beta/openai';
+  } else if (providerKey == 'dashscope' &&
+      host == 'dashscope.aliyuncs.com') {
+    officialPath = '/compatible-mode/v1';
+  } else if (providerKey == 'volcengine' && host.endsWith('.volces.com')) {
+    officialPath = '/api/v3';
+  }
+
+  if (officialPath == null) {
+    return normalizedBase;
+  }
+
+  return uri.replace(path: officialPath, query: null, fragment: null).toString();
 }

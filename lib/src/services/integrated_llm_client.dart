@@ -96,13 +96,22 @@ class IntegratedLlmClient {
       );
     }
 
-    final uri = Uri.parse('$endpointBase/chat/completions');
-    final body = <String, dynamic>{
-      'model': _stripProviderPrefix(model),
-      'messages': messages,
-      'temperature': temperature,
-      ...extraParams,
-    };
+    final usesAnthropicMessagesApi = _usesAnthropicMessagesApi(
+      provider,
+      endpointBase,
+    );
+    final uri = Uri.parse(
+      usesAnthropicMessagesApi
+          ? '$endpointBase/messages'
+          : '$endpointBase/chat/completions',
+    );
+    final body = _buildRequestBody(
+      model: model,
+      temperature: temperature,
+      messages: messages,
+      extraParams: extraParams,
+      usesAnthropicMessagesApi: usesAnthropicMessagesApi,
+    );
 
     final response = await _client.post(
       uri,
@@ -120,6 +129,10 @@ class IntegratedLlmClient {
       throw const ApiException(
         'The model provider returned an empty response.',
       );
+    }
+
+    if (usesAnthropicMessagesApi) {
+      return _messageContent(<String, dynamic>{'content': decoded['content']});
     }
 
     final choices = decoded['choices'];
@@ -144,9 +157,90 @@ class IntegratedLlmClient {
     return _messageContent(message);
   }
 
+  Map<String, dynamic> _buildRequestBody({
+    required String model,
+    required double temperature,
+    required List<Map<String, String>> messages,
+    required Map<String, dynamic> extraParams,
+    required bool usesAnthropicMessagesApi,
+  }) {
+    if (!usesAnthropicMessagesApi) {
+      return <String, dynamic>{
+        'model': _stripProviderPrefix(model),
+        'messages': messages,
+        'temperature': temperature,
+        ...extraParams,
+      };
+    }
+
+    final extra = Map<String, dynamic>.from(extraParams);
+    final maxTokensValue = extra.remove('max_tokens');
+    final maxTokens = switch (maxTokensValue) {
+      final num value => value.toInt(),
+      final String value => int.tryParse(value),
+      _ => null,
+    };
+
+    final body = <String, dynamic>{
+      'model': _stripProviderPrefix(model),
+      'messages': _anthropicMessages(messages),
+      'temperature': temperature,
+      'max_tokens': maxTokens ?? 256,
+      ...extra,
+    };
+
+    final systemPrompt = _anthropicSystemPrompt(messages);
+    if (systemPrompt != null && systemPrompt.isNotEmpty) {
+      body['system'] = systemPrompt;
+    }
+    return body;
+  }
+
   String _stripProviderPrefix(String model) {
     final slash = model.indexOf('/');
     return slash >= 0 ? model.substring(slash + 1) : model;
+  }
+
+  bool _usesAnthropicMessagesApi(String provider, String endpointBase) {
+    if (provider.toLowerCase() != 'anthropic') {
+      return false;
+    }
+    final uri = Uri.parse(endpointBase);
+    return uri.host.toLowerCase() == 'api.anthropic.com';
+  }
+
+  String? _anthropicSystemPrompt(List<Map<String, String>> messages) {
+    final systemMessages = messages
+        .where((message) => (message['role'] ?? '').trim() == 'system')
+        .map((message) => (message['content'] ?? '').trim())
+        .where((content) => content.isNotEmpty)
+        .toList();
+    if (systemMessages.isEmpty) {
+      return null;
+    }
+    return systemMessages.join('\n\n');
+  }
+
+  List<Map<String, String>> _anthropicMessages(
+    List<Map<String, String>> messages,
+  ) {
+    final converted = <Map<String, String>>[];
+    for (final message in messages) {
+      final role = (message['role'] ?? 'user').trim();
+      final content = (message['content'] ?? '').trim();
+      if (content.isEmpty || role == 'system') {
+        continue;
+      }
+      converted.add(<String, String>{
+        'role': role == 'assistant' ? 'assistant' : 'user',
+        'content': content,
+      });
+    }
+
+    if (converted.isEmpty) {
+      converted.add(const <String, String>{'role': 'user', 'content': 'ping'});
+    }
+    return converted;
   }
 
   String _messageContent(Map<String, dynamic> message) {

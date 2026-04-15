@@ -236,14 +236,14 @@ class _SettingsPageState extends State<SettingsPage> {
           backgroundColor: _DarkTheme.card,
         ),
       );
-    } catch (_) {
+    } catch (error) {
       if (!mounted) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            widget.strings.text('settings.testFailed'),
+            '${widget.strings.text('settings.testFailed')}: $error',
             style: const TextStyle(color: _DarkTheme.textPrimary),
           ),
           backgroundColor: _DarkTheme.card,

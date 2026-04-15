@@ -156,9 +156,18 @@ class _ProviderConfigPageState extends State<ProviderConfigPage> {
       );
 
       await widget.controller.api.testModelProvider(provider);
-      if (mounted) setState(() => _testResult = 'success');
-    } catch (_) {
-      if (mounted) setState(() => _testResult = 'failed');
+      if (mounted) {
+        setState(() {
+          _testResult = 'success';
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _testResult = 'failed';
+        });
+        _showError(error.toString());
+      }
     } finally {
       if (mounted) setState(() => _isTesting = false);
     }
@@ -349,7 +358,7 @@ class _ProviderConfigPageState extends State<ProviderConfigPage> {
               _buildTextField(
                 controller: _apiUrlController,
                 label: 'API Base URL',
-                hint: 'https://api.openai.com',
+                hint: 'https://api.openai.com/v1',
               ),
               const SizedBox(height: 16),
               _buildTextField(
