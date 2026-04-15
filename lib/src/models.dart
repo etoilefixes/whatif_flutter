@@ -16,10 +16,10 @@ class VoiceConfig {
 
   factory VoiceConfig.fromJson(Map<String, dynamic> json) {
     return VoiceConfig(
-      enabled: json['enabled'] as bool? ?? false,
+      enabled: _asBool(json['enabled']) ?? false,
       voice:
-          json['voice'] as String? ??
-          defaultVoiceForLocale(json['locale'] as String? ?? 'zh-CN'),
+          _asString(json['voice']) ??
+          defaultVoiceForLocale(_asString(json['locale']) ?? 'zh-CN'),
     );
   }
 
@@ -69,8 +69,8 @@ class LastPkg {
 
   factory LastPkg.fromJson(Map<String, dynamic> json) {
     return LastPkg(
-      filename: json['filename'] as String? ?? '',
-      name: json['name'] as String? ?? '',
+      filename: _asString(json['filename']) ?? '',
+      name: _asString(json['name']) ?? '',
     );
   }
 
@@ -126,13 +126,13 @@ class SaveInfo {
   factory SaveInfo.fromJson(Map<String, dynamic> json) {
     return SaveInfo(
       slot: (json['slot'] as num?)?.toInt() ?? 0,
-      saveTime: json['saveTime'] as String? ?? '',
-      playerName: json['playerName'] as String? ?? '',
-      currentPhase: json['currentPhase'] as String?,
-      currentEventId: json['currentEventId'] as String?,
+      saveTime: _asString(json['saveTime']) ?? '',
+      playerName: _asString(json['playerName']) ?? '',
+      currentPhase: _asString(json['currentPhase']),
+      currentEventId: _asString(json['currentEventId']),
       totalTurns: (json['totalTurns'] as num?)?.toInt() ?? 0,
-      description: json['description'] as String? ?? '',
-      worldpkgTitle: json['worldpkgTitle'] as String? ?? '',
+      description: _asString(json['description']) ?? '',
+      worldpkgTitle: _asString(json['worldpkgTitle']) ?? '',
     );
   }
 }
@@ -338,13 +338,11 @@ class ModelProvider {
   factory ModelProvider.fromJson(Map<String, dynamic> json) {
     final models = json['models'];
     return ModelProvider(
-      name: json['name'] as String? ?? '',
-      apiKey: json['apiKey'] as String? ?? '',
-      apiUrl: json['apiUrl'] as String?,
-      models: models is List<dynamic>
-          ? models.whereType<String>().toList()
-          : const <String>[],
-      enabled: json['enabled'] as bool? ?? true,
+      name: _asString(json['name']) ?? '',
+      apiKey: _asString(json['apiKey']) ?? '',
+      apiUrl: _asString(json['apiUrl']),
+      models: _asStringList(models),
+      enabled: _asBool(json['enabled']) ?? true,
     );
   }
 
@@ -392,11 +390,11 @@ class LlmSlotConfig {
 
   factory LlmSlotConfig.fromJson(Map<String, dynamic> json) {
     return LlmSlotConfig(
-      model: json['model'] as String? ?? '',
+      model: _asString(json['model']) ?? '',
       temperature: (json['temperature'] as num?)?.toDouble() ?? 0,
       thinkingBudget: (json['thinking_budget'] as num?)?.toInt() ?? 0,
-      apiBase: json['api_base'] as String?,
-      extraParams: (json['extra_params'] as Map<String, dynamic>?) ?? const {},
+      apiBase: _asString(json['api_base']),
+      extraParams: _asStringKeyedMap(json['extra_params']),
     );
   }
 
@@ -435,11 +433,11 @@ class LlmConfigMap {
 
   factory LlmConfigMap.fromJson(Map<String, dynamic> json) {
     Map<String, LlmSlotConfig> parseSection(String key) {
-      final section = json[key] as Map<String, dynamic>? ?? const {};
+      final section = _asStringKeyedMap(json[key]);
       return section.map(
         (name, value) => MapEntry(
           name,
-          LlmSlotConfig.fromJson(value as Map<String, dynamic>),
+          LlmSlotConfig.fromJson(_asStringKeyedMap(value)),
         ),
       );
     }
@@ -529,9 +527,61 @@ Map<String, dynamic>? decodeJsonObject(String? raw) {
     return null;
   }
 
-  final decoded = jsonDecode(raw);
-  if (decoded is Map<String, dynamic>) {
-    return decoded;
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    if (decoded is Map) {
+      return decoded.map(
+        (key, value) => MapEntry(key.toString(), value),
+      );
+    }
+  } catch (_) {
+    return null;
   }
   return null;
+}
+
+String? _asString(Object? value) {
+  if (value == null) {
+    return null;
+  }
+  return value.toString();
+}
+
+bool? _asBool(Object? value) {
+  if (value is bool) {
+    return value;
+  }
+  if (value is num) {
+    return value != 0;
+  }
+  if (value is String) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized == 'true' || normalized == '1') {
+      return true;
+    }
+    if (normalized == 'false' || normalized == '0') {
+      return false;
+    }
+  }
+  return null;
+}
+
+List<String> _asStringList(Object? value) {
+  if (value is! List) {
+    return const <String>[];
+  }
+  return value.map((item) => item.toString()).toList();
+}
+
+Map<String, dynamic> _asStringKeyedMap(Object? value) {
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+  if (value is Map) {
+    return value.map((key, nestedValue) => MapEntry(key.toString(), nestedValue));
+  }
+  return const <String, dynamic>{};
 }

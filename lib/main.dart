@@ -15,16 +15,23 @@ import 'src/services/config_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final prefs = await SharedPreferences.getInstance();
-  final store = await ConfigStore.open(legacyPrefs: prefs);
-  final controller = AppController(
-    store: store,
-    api: await createBackendApi(store: store),
-    runtime: createBackendRuntime(),
-  );
+  final bootstrap = await _bootstrapApp();
+  runApp(_BootstrapShell(bootstrap: bootstrap));
+}
 
-  runApp(WhatIfApp(controller: controller));
-  controller.initialize();
+Future<_BootstrapResult> _bootstrapApp() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final store = await ConfigStore.open(legacyPrefs: prefs);
+    final controller = AppController(
+      store: store,
+      api: await createBackendApi(store: store),
+      runtime: createBackendRuntime(),
+    );
+    return _BootstrapResult.success(controller);
+  } catch (error, stackTrace) {
+    return _BootstrapResult.failure(error, stackTrace);
+  }
 }
 
 class WhatIfApp extends StatefulWidget {
@@ -34,6 +41,112 @@ class WhatIfApp extends StatefulWidget {
 
   @override
   State<WhatIfApp> createState() => _WhatIfAppState();
+}
+
+class _BootstrapShell extends StatefulWidget {
+  const _BootstrapShell({required this.bootstrap});
+
+  final _BootstrapResult bootstrap;
+
+  @override
+  State<_BootstrapShell> createState() => _BootstrapShellState();
+}
+
+class _BootstrapShellState extends State<_BootstrapShell> {
+  @override
+  void initState() {
+    super.initState();
+    widget.bootstrap.controller?.initialize();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.bootstrap.controller;
+    if (controller != null) {
+      return WhatIfApp(controller: controller);
+    }
+
+    final error = widget.bootstrap.error;
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: const Color(0xFF09111F),
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Card(
+                  color: const Color(0xCC0E1727),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                    side: const BorderSide(color: Color(0x22D6922F)),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'WhatIf startup failed',
+                          style: GoogleFonts.ibmPlexSans(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'The app hit an error before the main UI finished loading.',
+                          style: GoogleFonts.ibmPlexSans(
+                            fontSize: 15,
+                            color: const Color(0xFFC0CCE4),
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        SelectableText(
+                          '$error',
+                          style: GoogleFonts.ibmPlexMono(
+                            fontSize: 13,
+                            color: const Color(0xFFF1CC7A),
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BootstrapResult {
+  const _BootstrapResult._({
+    this.controller,
+    this.error,
+    this.stackTrace,
+  });
+
+  factory _BootstrapResult.success(AppController controller) {
+    return _BootstrapResult._(controller: controller);
+  }
+
+  factory _BootstrapResult.failure(Object error, StackTrace stackTrace) {
+    return _BootstrapResult._(error: error, stackTrace: stackTrace);
+  }
+
+  final AppController? controller;
+  final Object? error;
+  final StackTrace? stackTrace;
 }
 
 class _WhatIfAppState extends State<WhatIfApp> {

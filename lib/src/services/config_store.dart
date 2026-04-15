@@ -82,8 +82,8 @@ class ConfigStore {
       return migrated;
     }
 
-    final decoded = jsonDecode(legacyKeysRaw);
-    if (decoded is! Map<String, dynamic>) {
+    final decoded = decodeJsonObject(legacyKeysRaw);
+    if (decoded == null) {
       return migrated;
     }
 
@@ -135,16 +135,24 @@ class ConfigStore {
   List<ModelProvider> getModelProviders() {
     final raw = _rawValue(_modelProvidersKey);
     if (raw != null) {
-      final decoded = jsonDecode(raw);
-      if (decoded is List<dynamic>) {
-        final providers = decoded
-            .whereType<Map<String, dynamic>>()
-            .map(ModelProvider.fromJson)
-            .toList();
-        if (providers.isNotEmpty) {
-          return providers;
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          final providers = decoded
+              .whereType<Map>()
+              .map(
+                (entry) => entry.map(
+                  (key, value) => MapEntry(key.toString(), value),
+                ),
+              )
+              .map(ModelProvider.fromJson)
+              .where((provider) => provider.name.trim().isNotEmpty)
+              .toList();
+          if (providers.isNotEmpty) {
+            return providers;
+          }
         }
-      }
+      } catch (_) {}
     }
 
     return const <ModelProvider>[];

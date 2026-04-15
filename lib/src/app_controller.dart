@@ -53,20 +53,33 @@ class AppController extends ChangeNotifier {
       return;
     }
     _didInitialize = true;
-
-    locale = store.getLocale();
-    modelProviders = store.getModelProviders();
-    llmConfig = store.getLlmConfig();
-    voiceConfig = store.getVoiceConfig(locale);
-
-    final lastPkg = store.getLastPkg();
-    currentPkgName = lastPkg?.name;
-    currentPkgFilename = lastPkg?.filename;
-
-    await _configureBackendEndpoint();
-    await _refreshBackendState(lastPkg: lastPkg);
-    initializing = false;
+    initializing = true;
     notifyListeners();
+
+    try {
+      locale = store.getLocale();
+      modelProviders = store.getModelProviders();
+      llmConfig = store.getLlmConfig();
+      voiceConfig = store.getVoiceConfig(locale);
+
+      final lastPkg = store.getLastPkg();
+      currentPkgName = lastPkg?.name;
+      currentPkgFilename = lastPkg?.filename;
+
+      await _configureBackendEndpoint();
+      await _refreshBackendState(lastPkg: lastPkg);
+    } catch (error, stackTrace) {
+      debugPrint('AppController.initialize failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      runtimeError = error.toString();
+      backendReachable = false;
+      readyState = hasModelProvider
+          ? AppReadyState.offline
+          : AppReadyState.needsConfig;
+    } finally {
+      initializing = false;
+      notifyListeners();
+    }
   }
 
   Future<void> retryConnection() async {
