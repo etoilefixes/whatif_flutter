@@ -100,9 +100,11 @@ class IntegratedLlmClient {
     );
 
     final responseText = response.body;
-    final decoded = responseText.isEmpty ? null : jsonDecode(responseText);
+    final decoded = _tryDecodeResponseBody(responseText);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException(_errorMessage(response.statusCode, decoded));
+      throw ApiException(
+        _errorMessage(response.statusCode, decoded, rawBody: responseText),
+      );
     }
 
     if (decoded is! Map<String, dynamic>) {
@@ -239,7 +241,19 @@ class IntegratedLlmClient {
     throw const ApiException('The model provider returned empty content.');
   }
 
-  String _errorMessage(int statusCode, Object? body) {
+  Object? _tryDecodeResponseBody(String rawBody) {
+    if (rawBody.trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      return jsonDecode(rawBody);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _errorMessage(int statusCode, Object? body, {String? rawBody}) {
     if (body is Map<String, dynamic>) {
       final error = body['error'];
       if (error is Map<String, dynamic>) {
@@ -253,6 +267,13 @@ class IntegratedLlmClient {
       if (message != null && message.isNotEmpty) {
         return message;
       }
+    }
+
+    final plainText = rawBody?.trim() ?? '';
+    if (plainText.isNotEmpty) {
+      final compact = plainText.replaceAll(RegExp(r'\s+'), ' ');
+      final end = compact.length > 200 ? 200 : compact.length;
+      return 'HTTP $statusCode: ${compact.substring(0, end)}';
     }
 
     return 'HTTP $statusCode';
