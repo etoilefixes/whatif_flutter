@@ -6,6 +6,7 @@ import 'package:http/testing.dart';
 
 import 'package:flutter_client/src/services/backend_api_contract.dart';
 import 'package:flutter_client/src/services/integrated_llm_client.dart';
+import 'package:flutter_client/src/models.dart';
 
 void main() {
   test(
@@ -106,5 +107,85 @@ void main() {
     );
 
     expect(postedModel, 'meta/llama-3.1-8b-instruct');
+  });
+
+  test(
+    'recovers nvidia 404s by probing models and retrying with an available model',
+    () async {
+      final seenUrls = <String>[];
+      final postedModels = <String>[];
+      final client = IntegratedLlmClient(
+        client: MockClient((request) async {
+          seenUrls.add(request.url.toString());
+          if (request.method == 'POST') {
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            postedModels.add(body['model'] as String);
+          }
+
+          if (request.url.toString() ==
+              'https://integrate.api.nvidia.com/v1/chat/completions') {
+            if (postedModels.length == 1) {
+              return http.Response('404 page not found', 404);
+            }
+            return http.Response(
+              jsonEncode(<String, dynamic>{
+                'choices': <dynamic>[
+                  <String, dynamic>{
+                    'message': <String, dynamic>{'content': 'OK'},
+                  },
+                ],
+              }),
+              200,
+              headers: const <String, String>{
+                'content-type': 'application/json',
+              },
+            );
+          }
+
+          if (request.url.toString() ==
+              'https://integrate.api.nvidia.com/v1/models') {
+            return http.Response(
+              jsonEncode(<String, dynamic>{
+                'data': <dynamic>[
+                  <String, dynamic>{
+                    'id': 'nvidia/llama-3.1-nemotron-nano-8b-v1',
+                  },
+                ],
+              }),
+              200,
+              headers: const <String, String>{
+                'content-type': 'application/json',
+              },
+            );
+          }
+
+          return http.Response('not found', 404);
+        }),
+      );
+
+      final result = await client.completeChat(
+        provider: 'nvidia',
+        apiKey: 'test-key',
+        model: 'meta/llama-3.1-8b-instruct',
+        temperature: 0,
+        messages: const <Map<String, String>>[
+          <String, String>{'role': 'user', 'content': 'ping'},
+        ],
+      );
+
+      expect(result, 'OK');
+      expect(seenUrls, contains('https://integrate.api.nvidia.com/v1/models'));
+      expect(postedModels, <String>[
+        'meta/llama-3.1-8b-instruct',
+        'nvidia/llama-3.1-nemotron-nano-8b-v1',
+      ]);
+    },
+  );
+
+  test('nvidia defaults prefer the first-party nemotron model', () {
+    expect(
+      ModelProvider.suggestedModelsFor('nvidia').first,
+      'nvidia/llama-3.1-nemotron-nano-8b-v1',
+    );
   });
 }

@@ -335,7 +335,10 @@ class ModelProvider {
       'doubao-seed-1.6',
       'deepseek-v3.2',
     ],
-    'nvidia': <String>['meta/llama-3.1-8b-instruct'],
+    'nvidia': <String>[
+      'nvidia/llama-3.1-nemotron-nano-8b-v1',
+      'meta/llama-3.1-8b-instruct',
+    ],
   };
 
   static const Map<String, String> displayNames = <String, String>{

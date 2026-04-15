@@ -77,6 +77,7 @@ class IntegratedLlmClient {
     }
 
     ApiException? lastError;
+    final providerKey = ModelProvider.canonicalProviderName(provider);
     for (var index = 0; index < endpointBases.length; index += 1) {
       final endpointBase = endpointBases[index];
       final usesAnthropicMessagesApi = _usesAnthropicMessagesApi(
@@ -106,6 +107,21 @@ class IntegratedLlmClient {
       final responseText = response.body;
       final decoded = _tryDecodeResponseBody(responseText);
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (providerKey == 'nvidia' &&
+            _shouldRetryWithFallback(response.statusCode, responseText)) {
+          final recovered = await _recoverNvidiaRequest(
+            endpointBase: endpointBase,
+            apiKey: apiKey,
+            requestedModel: model,
+            temperature: temperature,
+            messages: messages,
+            extraParams: extraParams,
+          );
+          if (recovered != null) {
+            return recovered.content;
+          }
+        }
+
         lastError = ApiException(
           _errorMessage(
             response.statusCode,
@@ -213,10 +229,116 @@ class IntegratedLlmClient {
 
     final prefix = trimmed.substring(0, slash).toLowerCase();
     if (prefix == providerKey) {
-      return trimmed.substring(slash + 1);
+      final remainder = trimmed.substring(slash + 1);
+      if ((providerKey == 'nvidia' || providerKey == 'siliconflow') &&
+          !remainder.contains('/')) {
+        return trimmed;
+      }
+      return remainder;
     }
 
     return trimmed;
+  }
+
+  Future<_RecoveredChatResult?> _recoverNvidiaRequest({
+    required String endpointBase,
+    required String apiKey,
+    required String requestedModel,
+    required double temperature,
+    required List<Map<String, String>> messages,
+    required Map<String, dynamic> extraParams,
+  }) async {
+    final modelsUri = Uri.parse('$endpointBase/models');
+    final modelsResponse = await _client.get(
+      modelsUri,
+      headers: buildProviderHeaders(provider: 'nvidia', apiKey: apiKey),
+    );
+    final modelsBody = modelsResponse.body;
+    final decodedModels = _tryDecodeResponseBody(modelsBody);
+
+    if (modelsResponse.statusCode < 200 || modelsResponse.statusCode >= 300) {
+      throw ApiException(
+        'NVIDIA API returned HTTP ${modelsResponse.statusCode} when probing '
+        '$modelsUri. Please make sure you are using an API Catalog key from '
+        'build.nvidia.com, not an NGC or other NVIDIA key.',
+      );
+    }
+
+    final availableModels = parseModelIdsFromResponse(decodedModels);
+    if (availableModels.isEmpty) {
+      throw ApiException(
+        'NVIDIA API returned no models from $modelsUri. Please confirm your '
+        'Build NVIDIA account has access to at least one chat model.',
+      );
+    }
+
+    final normalizedRequested = _normalizeModelId('nvidia', requestedModel);
+    final retryModel = availableModels.firstWhere(
+      (candidate) => candidate.trim() != normalizedRequested,
+      orElse: () => availableModels.first,
+    );
+
+    if (retryModel == normalizedRequested) {
+      throw ApiException(
+        'NVIDIA API still rejected the resolved model "$retryModel". '
+        'If this is a third-party model like meta/*, open it once on '
+        'build.nvidia.com and complete any required acknowledgement.',
+      );
+    }
+
+    final retryUri = Uri.parse('$endpointBase/chat/completions');
+    final retryBody = _buildRequestBody(
+      provider: 'nvidia',
+      model: retryModel,
+      temperature: temperature,
+      messages: messages,
+      extraParams: extraParams,
+      usesAnthropicMessagesApi: false,
+    );
+    final retryResponse = await _client.post(
+      retryUri,
+      headers: buildProviderHeaders(provider: 'nvidia', apiKey: apiKey),
+      body: jsonEncode(retryBody),
+    );
+    final retryResponseText = retryResponse.body;
+    final retryDecoded = _tryDecodeResponseBody(retryResponseText);
+    if (retryResponse.statusCode < 200 || retryResponse.statusCode >= 300) {
+      throw ApiException(
+        _errorMessage(
+          retryResponse.statusCode,
+          retryDecoded,
+          rawBody: retryResponseText,
+          requestUrl: retryUri.toString(),
+        ),
+      );
+    }
+
+    if (retryDecoded is! Map<String, dynamic>) {
+      throw const ApiException(
+        'The model provider returned an empty response.',
+      );
+    }
+
+    final choices = retryDecoded['choices'];
+    if (choices is! List<dynamic> || choices.isEmpty) {
+      throw const ApiException('The model provider returned no choices.');
+    }
+
+    final firstChoice = choices.first;
+    if (firstChoice is! Map<String, dynamic>) {
+      throw const ApiException(
+        'The model provider returned an invalid choice.',
+      );
+    }
+
+    final message = firstChoice['message'];
+    if (message is! Map<String, dynamic>) {
+      throw const ApiException(
+        'The model provider returned an invalid message.',
+      );
+    }
+
+    return _RecoveredChatResult(content: _messageContent(message));
   }
 
   bool _shouldRetryWithFallback(int statusCode, String rawBody) {
@@ -344,4 +466,10 @@ class IntegratedLlmClient {
   void dispose() {
     _client.close();
   }
+}
+
+class _RecoveredChatResult {
+  const _RecoveredChatResult({required this.content});
+
+  final String content;
 }
