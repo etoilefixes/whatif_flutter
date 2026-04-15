@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.2
+
+- Bump app version to 1.0.2 for Android APK release.
+
 ## v1.0.1
 
 - 增加模型提供商管理 UI

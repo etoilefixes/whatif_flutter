@@ -1,6 +1,6 @@
 # WhatIf Flutter Client
 
-![Version](https://img.shields.io/badge/version-1.0.1%2B2-2f6feb)
+![Version](https://img.shields.io/badge/version-1.0.2%2B3-2f6feb)
 ![Flutter](https://img.shields.io/badge/Flutter-3.41.x-02569B?logo=flutter)
 ![License](https://img.shields.io/github/license/etoilefixes/whatif_flutter)
 
@@ -181,6 +181,10 @@ flutter test
 详细说明见 [贡献指南](./docs/CONTRIBUTING.md)。
 
 ## 更新日志
+
+### v1.0.2
+
+- Bump app version to 1.0.2 for Android APK release
 
 ### v1.0.1
 
