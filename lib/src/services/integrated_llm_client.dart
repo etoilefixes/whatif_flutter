@@ -66,80 +66,101 @@ class IntegratedLlmClient {
     String? apiBase,
     Map<String, dynamic> extraParams = const <String, dynamic>{},
   }) async {
-    final endpointBase = resolveProviderApiBase(
+    final endpointBases = resolveProviderApiBaseCandidates(
       provider: provider,
       customApiUrl: apiBase,
     );
-    if (endpointBase == null) {
+    if (endpointBases.isEmpty) {
       throw ApiException(
         'Integrated backend does not support provider "$provider" yet.',
       );
     }
 
-    final usesAnthropicMessagesApi = _usesAnthropicMessagesApi(
-      provider,
-      endpointBase,
-    );
-    final uri = Uri.parse(
-      usesAnthropicMessagesApi
-          ? '$endpointBase/messages'
-          : '$endpointBase/chat/completions',
-    );
-    final body = _buildRequestBody(
-      model: model,
-      temperature: temperature,
-      messages: messages,
-      extraParams: extraParams,
-      usesAnthropicMessagesApi: usesAnthropicMessagesApi,
-    );
-
-    final response = await _client.post(
-      uri,
-      headers: buildProviderHeaders(provider: provider, apiKey: apiKey),
-      body: jsonEncode(body),
-    );
-
-    final responseText = response.body;
-    final decoded = _tryDecodeResponseBody(responseText);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException(
-        _errorMessage(response.statusCode, decoded, rawBody: responseText),
+    ApiException? lastError;
+    for (var index = 0; index < endpointBases.length; index += 1) {
+      final endpointBase = endpointBases[index];
+      final usesAnthropicMessagesApi = _usesAnthropicMessagesApi(
+        provider,
+        endpointBase,
       );
-    }
-
-    if (decoded is! Map<String, dynamic>) {
-      throw const ApiException(
-        'The model provider returned an empty response.',
+      final uri = Uri.parse(
+        usesAnthropicMessagesApi
+            ? '$endpointBase/messages'
+            : '$endpointBase/chat/completions',
       );
-    }
-
-    if (usesAnthropicMessagesApi) {
-      return _messageContent(<String, dynamic>{'content': decoded['content']});
-    }
-
-    final choices = decoded['choices'];
-    if (choices is! List<dynamic> || choices.isEmpty) {
-      throw const ApiException('The model provider returned no choices.');
-    }
-
-    final firstChoice = choices.first;
-    if (firstChoice is! Map<String, dynamic>) {
-      throw const ApiException(
-        'The model provider returned an invalid choice.',
+      final body = _buildRequestBody(
+        provider: provider,
+        model: model,
+        temperature: temperature,
+        messages: messages,
+        extraParams: extraParams,
+        usesAnthropicMessagesApi: usesAnthropicMessagesApi,
       );
-    }
 
-    final message = firstChoice['message'];
-    if (message is! Map<String, dynamic>) {
-      throw const ApiException(
-        'The model provider returned an invalid message.',
+      final response = await _client.post(
+        uri,
+        headers: buildProviderHeaders(provider: provider, apiKey: apiKey),
+        body: jsonEncode(body),
       );
+
+      final responseText = response.body;
+      final decoded = _tryDecodeResponseBody(responseText);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        lastError = ApiException(
+          _errorMessage(
+            response.statusCode,
+            decoded,
+            rawBody: responseText,
+            requestUrl: uri.toString(),
+          ),
+        );
+        if (_shouldRetryWithFallback(response.statusCode, responseText) &&
+            index < endpointBases.length - 1) {
+          continue;
+        }
+        throw lastError;
+      }
+
+      if (decoded is! Map<String, dynamic>) {
+        throw const ApiException(
+          'The model provider returned an empty response.',
+        );
+      }
+
+      if (usesAnthropicMessagesApi) {
+        return _messageContent(<String, dynamic>{
+          'content': decoded['content'],
+        });
+      }
+
+      final choices = decoded['choices'];
+      if (choices is! List<dynamic> || choices.isEmpty) {
+        throw const ApiException('The model provider returned no choices.');
+      }
+
+      final firstChoice = choices.first;
+      if (firstChoice is! Map<String, dynamic>) {
+        throw const ApiException(
+          'The model provider returned an invalid choice.',
+        );
+      }
+
+      final message = firstChoice['message'];
+      if (message is! Map<String, dynamic>) {
+        throw const ApiException(
+          'The model provider returned an invalid message.',
+        );
+      }
+
+      return _messageContent(message);
     }
 
-    return _messageContent(message);
+    throw lastError ??
+        const ApiException('The model provider request did not complete.');
   }
 
   Map<String, dynamic> _buildRequestBody({
+    required String provider,
     required String model,
     required double temperature,
     required List<Map<String, String>> messages,
@@ -148,7 +169,7 @@ class IntegratedLlmClient {
   }) {
     if (!usesAnthropicMessagesApi) {
       return <String, dynamic>{
-        'model': _stripProviderPrefix(model),
+        'model': _normalizeModelId(provider, model),
         'messages': messages,
         'temperature': temperature,
         ...extraParams,
@@ -164,7 +185,7 @@ class IntegratedLlmClient {
     };
 
     final body = <String, dynamic>{
-      'model': _stripProviderPrefix(model),
+      'model': _normalizeModelId(provider, model),
       'messages': _anthropicMessages(messages),
       'temperature': temperature,
       'max_tokens': maxTokens ?? 256,
@@ -178,9 +199,34 @@ class IntegratedLlmClient {
     return body;
   }
 
-  String _stripProviderPrefix(String model) {
-    final slash = model.indexOf('/');
-    return slash >= 0 ? model.substring(slash + 1) : model;
+  String _normalizeModelId(String provider, String model) {
+    final trimmed = model.trim();
+    if (trimmed.isEmpty) {
+      return trimmed;
+    }
+
+    final providerKey = ModelProvider.canonicalProviderName(provider);
+    final slash = trimmed.indexOf('/');
+    if (slash <= 0) {
+      return trimmed;
+    }
+
+    final prefix = trimmed.substring(0, slash).toLowerCase();
+    if (prefix == providerKey) {
+      return trimmed.substring(slash + 1);
+    }
+
+    return trimmed;
+  }
+
+  bool _shouldRetryWithFallback(int statusCode, String rawBody) {
+    if (statusCode != 404) {
+      return false;
+    }
+    final normalized = rawBody.trim().toLowerCase();
+    return normalized.isEmpty ||
+        normalized.contains('page not found') ||
+        normalized.contains('404');
   }
 
   bool _usesAnthropicMessagesApi(String provider, String endpointBase) {
@@ -253,19 +299,24 @@ class IntegratedLlmClient {
     }
   }
 
-  String _errorMessage(int statusCode, Object? body, {String? rawBody}) {
+  String _errorMessage(
+    int statusCode,
+    Object? body, {
+    String? rawBody,
+    String? requestUrl,
+  }) {
     if (body is Map<String, dynamic>) {
       final error = body['error'];
       if (error is Map<String, dynamic>) {
         final message = error['message']?.toString();
         if (message != null && message.isNotEmpty) {
-          return message;
+          return requestUrl == null ? message : '$message [$requestUrl]';
         }
       }
 
       final message = body['message']?.toString() ?? body['detail']?.toString();
       if (message != null && message.isNotEmpty) {
-        return message;
+        return requestUrl == null ? message : '$message [$requestUrl]';
       }
     }
 
@@ -273,10 +324,13 @@ class IntegratedLlmClient {
     if (plainText.isNotEmpty) {
       final compact = plainText.replaceAll(RegExp(r'\s+'), ' ');
       final end = compact.length > 200 ? 200 : compact.length;
-      return 'HTTP $statusCode: ${compact.substring(0, end)}';
+      final urlText = requestUrl == null ? '' : ' [$requestUrl]';
+      return 'HTTP $statusCode$urlText: ${compact.substring(0, end)}';
     }
 
-    return 'HTTP $statusCode';
+    return requestUrl == null
+        ? 'HTTP $statusCode'
+        : 'HTTP $statusCode [$requestUrl]';
   }
 
   String _defaultTestModel(String provider) {

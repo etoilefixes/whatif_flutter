@@ -47,6 +47,14 @@ void main() {
       ),
       'https://api.siliconflow.cn/v1',
     );
+    expect(resolveProviderApiBaseCandidates(provider: 'volcengine'), <String>[
+      'https://ark.cn-beijing.volces.com/api/coding/v3',
+      'https://ark.cn-beijing.volces.com/api/v3',
+    ]);
+    expect(resolveProviderApiBaseCandidates(provider: 'siliconflow'), <String>[
+      'https://api.siliconflow.cn/v1',
+      'https://api.siliconflow.com/v1',
+    ]);
   });
 
   test('extracts model ids from common response shapes', () {

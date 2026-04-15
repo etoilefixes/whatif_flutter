@@ -1,5 +1,3 @@
-import 'dart:collection';
-
 import '../models.dart';
 
 String? normalizeProviderApiBase(String? value) {
@@ -51,21 +49,37 @@ String? resolveProviderApiBase({
   required String provider,
   String? customApiUrl,
 }) {
+  final candidates = resolveProviderApiBaseCandidates(
+    provider: provider,
+    customApiUrl: customApiUrl,
+  );
+  return candidates.isEmpty ? null : candidates.first;
+}
+
+List<String> resolveProviderApiBaseCandidates({
+  required String provider,
+  String? customApiUrl,
+}) {
   final providerKey = ModelProvider.canonicalProviderName(provider);
   if (ModelProvider.usesManagedApiUrl(providerKey)) {
-    return normalizeProviderApiBase(ModelProvider.fixedApiUrlFor(providerKey));
+    return _managedProviderBaseCandidates(providerKey);
   }
 
   final provided = customApiUrl?.trim();
   final normalizedCustom = normalizeProviderApiBase(provided);
   if (normalizedCustom != null) {
-    return _completeKnownOfficialBase(
-      provider: providerKey,
-      normalizedBase: normalizedCustom,
-    );
+    return <String>[
+      _completeKnownOfficialBase(
+        provider: providerKey,
+        normalizedBase: normalizedCustom,
+      ),
+    ];
   }
 
-  return normalizeProviderApiBase(ModelProvider.defaultApiUrls[providerKey]);
+  final defaultBase = normalizeProviderApiBase(
+    ModelProvider.defaultApiUrls[providerKey],
+  );
+  return defaultBase == null ? const <String>[] : <String>[defaultBase];
 }
 
 String buildProviderModelsUrl({
@@ -84,6 +98,26 @@ String buildProviderModelsUrl({
   final path = uri.path.replaceAll(RegExp(r'/+$'), '');
   final modelsPath = path.isEmpty ? '/v1/models' : '$path/models';
   return uri.replace(path: modelsPath, query: null, fragment: null).toString();
+}
+
+List<String> buildProviderModelsUrls({
+  required String provider,
+  String? customApiUrl,
+}) {
+  final baseUrls = resolveProviderApiBaseCandidates(
+    provider: provider,
+    customApiUrl: customApiUrl,
+  );
+  return baseUrls
+      .map((baseUrl) {
+        final uri = Uri.parse(baseUrl);
+        final path = uri.path.replaceAll(RegExp(r'/+$'), '');
+        final modelsPath = path.isEmpty ? '/v1/models' : '$path/models';
+        return uri
+            .replace(path: modelsPath, query: null, fragment: null)
+            .toString();
+      })
+      .toList(growable: false);
 }
 
 Map<String, String> buildProviderHeaders({
@@ -111,7 +145,7 @@ Map<String, String> buildProviderHeaders({
 }
 
 List<String> parseModelIdsFromResponse(Object? response) {
-  final modelIds = LinkedHashSet<String>();
+  final modelIds = <String>{};
 
   void addCandidate(Object? candidate) {
     final value = candidate?.toString().trim() ?? '';
@@ -199,4 +233,27 @@ String _completeKnownOfficialBase({
   return uri
       .replace(path: officialPath, query: null, fragment: null)
       .toString();
+}
+
+List<String> _managedProviderBaseCandidates(String providerKey) {
+  final candidates = switch (providerKey) {
+    'siliconflow' => const <String>[
+      'https://api.siliconflow.cn/v1',
+      'https://api.siliconflow.com/v1',
+    ],
+    'volcengine' => const <String>[
+      'https://ark.cn-beijing.volces.com/api/coding/v3',
+      'https://ark.cn-beijing.volces.com/api/v3',
+    ],
+    _ => <String>[ModelProvider.fixedApiUrlFor(providerKey) ?? ''],
+  };
+
+  final normalized = <String>{};
+  for (final candidate in candidates) {
+    final value = normalizeProviderApiBase(candidate);
+    if (value != null && value.isNotEmpty) {
+      normalized.add(value);
+    }
+  }
+  return normalized.toList(growable: false);
 }
