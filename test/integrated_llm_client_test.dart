@@ -125,7 +125,16 @@ void main() {
           if (request.url.toString() ==
               'https://integrate.api.nvidia.com/v1/chat/completions') {
             if (postedModels.length == 1) {
-              return http.Response('404 page not found', 404);
+              return http.Response(
+                jsonEncode(<String, dynamic>{
+                  'detail':
+                      "Function '23bd454d-b225-49a3-8118-582a62fc51b8': Not found for account 'test-account'",
+                }),
+                404,
+                headers: const <String, String>{
+                  'content-type': 'application/json',
+                },
+              );
             }
             return http.Response(
               jsonEncode(<String, dynamic>{

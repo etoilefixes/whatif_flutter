@@ -108,7 +108,11 @@ class IntegratedLlmClient {
       final decoded = _tryDecodeResponseBody(responseText);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         if (providerKey == 'nvidia' &&
-            _shouldRetryWithFallback(response.statusCode, responseText)) {
+            _shouldRecoverNvidiaRequest(
+              response.statusCode,
+              decoded,
+              responseText,
+            )) {
           final recovered = await _recoverNvidiaRequest(
             endpointBase: endpointBase,
             apiKey: apiKey,
@@ -349,6 +353,33 @@ class IntegratedLlmClient {
     return normalized.isEmpty ||
         normalized.contains('page not found') ||
         normalized.contains('404');
+  }
+
+  bool _shouldRecoverNvidiaRequest(
+    int statusCode,
+    Object? decodedBody,
+    String rawBody,
+  ) {
+    if (statusCode == 404) {
+      return true;
+    }
+
+    final normalizedRaw = rawBody.trim().toLowerCase();
+    if (normalizedRaw.contains('not found for account') ||
+        normalizedRaw.contains('function')) {
+      return true;
+    }
+
+    if (decodedBody is! Map<String, dynamic>) {
+      return false;
+    }
+
+    final detail =
+        decodedBody['detail']?.toString().toLowerCase() ??
+        decodedBody['message']?.toString().toLowerCase() ??
+        '';
+    return detail.contains('not found for account') ||
+        detail.contains('function');
   }
 
   bool _usesAnthropicMessagesApi(String provider, String endpointBase) {
