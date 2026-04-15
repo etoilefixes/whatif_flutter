@@ -61,8 +61,8 @@ class SqliteStorageBackend implements StorageBackend {
           ''');
         },
         onOpen: (db) async {
-          await db.execute('PRAGMA journal_mode=WAL;');
-          await db.execute('PRAGMA synchronous=NORMAL;');
+          await db.rawQuery('PRAGMA journal_mode = WAL;');
+          await db.rawQuery('PRAGMA synchronous = NORMAL;');
         },
       ),
     );
