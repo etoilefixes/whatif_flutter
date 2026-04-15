@@ -307,15 +307,23 @@ class ModelProvider {
 
   static const Map<String, String> defaultApiUrls = <String, String>{
     'openai': 'https://api.openai.com/v1',
+    'deepseek': 'https://api.deepseek.com/v1',
+    'siliconflow': 'https://api.siliconflow.cn/v1',
     'dashscope': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     'anthropic': 'https://api.anthropic.com/v1',
     'gemini': 'https://generativelanguage.googleapis.com/v1beta/openai',
-    'volcengine': 'https://ark.cn-beijing.volces.com/api/v3',
+    'volcengine': 'https://ark.cn-beijing.volces.com/api/coding/v3',
     'nvidia': 'https://integrate.api.nvidia.com/v1',
   };
 
   static const Map<String, List<String>> defaultModels = <String, List<String>>{
     'openai': <String>['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'],
+    'deepseek': <String>['deepseek-chat', 'deepseek-reasoner'],
+    'siliconflow': <String>[
+      'deepseek-ai/DeepSeek-V3.2',
+      'Qwen/Qwen3-Coder-30B-A3B-Instruct',
+      'moonshotai/Kimi-K2.5',
+    ],
     'dashscope': <String>['qwen3.5-flash', 'qwen3.5-plus', 'qwen-max'],
     'anthropic': <String>[
       'claude-sonnet-4-20250514',
@@ -323,20 +331,69 @@ class ModelProvider {
     ],
     'gemini': <String>['gemini-2.0-flash', 'gemini-2.5-pro-preview-05-06'],
     'volcengine': <String>[
-      'doubao-1-5-pro-32k-250115',
-      'doubao-1-5-lite-32k-250115',
+      'ark-code-latest',
+      'doubao-seed-1.6',
+      'deepseek-v3.2',
     ],
     'nvidia': <String>['meta/llama-3.1-8b-instruct'],
   };
 
+  static const Map<String, String> displayNames = <String, String>{
+    'openai': 'OpenAI',
+    'deepseek': 'DeepSeek',
+    'siliconflow': 'SiliconFlow',
+    'dashscope': 'DashScope',
+    'anthropic': 'Anthropic',
+    'gemini': 'Google Gemini',
+    'volcengine': 'Volcengine Ark',
+    'nvidia': 'NVIDIA',
+    'custom': 'Custom',
+  };
+
   static const List<String> knownProviders = <String>[
     'openai',
+    'deepseek',
+    'siliconflow',
     'dashscope',
     'anthropic',
     'gemini',
     'volcengine',
     'nvidia',
   ];
+
+  static const List<String> presetProviderOrder = <String>[
+    'openai',
+    'deepseek',
+    'siliconflow',
+    'volcengine',
+    'nvidia',
+    'dashscope',
+    'anthropic',
+    'gemini',
+    'custom',
+  ];
+
+  static String canonicalProviderName(String name) {
+    return name.trim().toLowerCase();
+  }
+
+  static bool usesManagedApiUrl(String providerName) {
+    return defaultApiUrls.containsKey(canonicalProviderName(providerName));
+  }
+
+  static String? fixedApiUrlFor(String providerName) {
+    return defaultApiUrls[canonicalProviderName(providerName)];
+  }
+
+  static List<String> suggestedModelsFor(String providerName) {
+    return defaultModels[canonicalProviderName(providerName)] ??
+        const <String>[];
+  }
+
+  static String displayNameFor(String providerName) {
+    final normalized = canonicalProviderName(providerName);
+    return displayNames[normalized] ?? providerName.trim();
+  }
 
   factory ModelProvider.fromJson(Map<String, dynamic> json) {
     final models = json['models'];
@@ -438,10 +495,8 @@ class LlmConfigMap {
     Map<String, LlmSlotConfig> parseSection(String key) {
       final section = _asStringKeyedMap(json[key]);
       return section.map(
-        (name, value) => MapEntry(
-          name,
-          LlmSlotConfig.fromJson(_asStringKeyedMap(value)),
-        ),
+        (name, value) =>
+            MapEntry(name, LlmSlotConfig.fromJson(_asStringKeyedMap(value))),
       );
     }
 
@@ -536,9 +591,7 @@ Map<String, dynamic>? decodeJsonObject(String? raw) {
       return decoded;
     }
     if (decoded is Map) {
-      return decoded.map(
-        (key, value) => MapEntry(key.toString(), value),
-      );
+      return decoded.map((key, value) => MapEntry(key.toString(), value));
     }
   } catch (_) {
     return null;
@@ -584,7 +637,9 @@ Map<String, dynamic> _asStringKeyedMap(Object? value) {
     return value;
   }
   if (value is Map) {
-    return value.map((key, nestedValue) => MapEntry(key.toString(), nestedValue));
+    return value.map(
+      (key, nestedValue) => MapEntry(key.toString(), nestedValue),
+    );
   }
   return const <String, dynamic>{};
 }

@@ -23,12 +23,29 @@ void main() {
       ),
       'https://api.openai.com/v1/models',
     );
+  });
+
+  test('managed providers always use the built-in official endpoints', () {
+    expect(
+      resolveProviderApiBase(
+        provider: 'deepseek',
+        customApiUrl: 'https://example.com/custom',
+      ),
+      'https://api.deepseek.com/v1',
+    );
     expect(
       buildProviderModelsUrl(
-        provider: 'openai',
-        customApiUrl: 'https://api.openai.com',
+        provider: 'volcengine',
+        customApiUrl: 'https://ark.cn-beijing.volces.com',
       ),
-      'https://api.openai.com/v1/models',
+      'https://ark.cn-beijing.volces.com/api/coding/v3/models',
+    );
+    expect(
+      resolveProviderApiBase(
+        provider: 'siliconflow',
+        customApiUrl: 'https://api.siliconflow.com',
+      ),
+      'https://api.siliconflow.cn/v1',
     );
   });
 

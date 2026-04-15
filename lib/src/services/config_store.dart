@@ -89,16 +89,17 @@ class ConfigStore {
 
     final providers = <ModelProvider>[];
     for (final entry in decoded.entries) {
+      final providerName = ModelProvider.canonicalProviderName(entry.key);
       final apiKey = entry.value?.toString() ?? '';
       if (apiKey.trim().isEmpty) {
         continue;
       }
       providers.add(
         ModelProvider(
-          name: entry.key,
+          name: providerName,
           apiKey: apiKey,
-          apiUrl: ModelProvider.defaultApiUrls[entry.key],
-          models: ModelProvider.defaultModels[entry.key] ?? const <String>[],
+          apiUrl: ModelProvider.fixedApiUrlFor(providerName),
+          models: ModelProvider.suggestedModelsFor(providerName),
         ),
       );
     }
@@ -141,9 +142,8 @@ class ConfigStore {
           final providers = decoded
               .whereType<Map>()
               .map(
-                (entry) => entry.map(
-                  (key, value) => MapEntry(key.toString(), value),
-                ),
+                (entry) =>
+                    entry.map((key, value) => MapEntry(key.toString(), value)),
               )
               .map(ModelProvider.fromJson)
               .where((provider) => provider.name.trim().isNotEmpty)

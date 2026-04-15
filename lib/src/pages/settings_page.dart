@@ -136,18 +136,28 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final providers = _providerEditors
           .map((e) {
+            final rawName = e.nameController.text.trim();
+            final normalizedName = ModelProvider.canonicalProviderName(rawName);
+            final effectiveName =
+                ModelProvider.knownProviders.contains(normalizedName)
+                ? normalizedName
+                : rawName;
             final models = e.modelsText
                 .split('\n')
                 .map((s) => s.trim())
                 .where((s) => s.isNotEmpty)
                 .toList();
             return ModelProvider(
-              name: e.nameController.text.trim(),
+              name: effectiveName,
               apiKey: e.apiKeyController.text.trim(),
-              apiUrl: e.apiUrlController.text.trim().isEmpty
-                  ? null
-                  : e.apiUrlController.text.trim(),
-              models: models,
+              apiUrl: ModelProvider.usesManagedApiUrl(effectiveName)
+                  ? ModelProvider.fixedApiUrlFor(effectiveName)
+                  : (e.apiUrlController.text.trim().isEmpty
+                        ? null
+                        : e.apiUrlController.text.trim()),
+              models: models.isEmpty
+                  ? ModelProvider.suggestedModelsFor(effectiveName)
+                  : models,
             );
           })
           .where((p) => p.name.isNotEmpty)
@@ -198,7 +208,11 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _testProvider(_ProviderEditor editor) async {
-    final name = editor.nameController.text.trim();
+    final rawName = editor.nameController.text.trim();
+    final normalizedName = ModelProvider.canonicalProviderName(rawName);
+    final name = ModelProvider.knownProviders.contains(normalizedName)
+        ? normalizedName
+        : rawName;
     final apiKey = editor.apiKeyController.text.trim();
     if (apiKey.isEmpty || !widget.controller.api.supportsProviderTesting) {
       return;
@@ -214,8 +228,10 @@ class _SettingsPageState extends State<SettingsPage> {
     final provider = ModelProvider(
       name: name,
       apiKey: apiKey,
-      apiUrl: apiUrl.isEmpty ? null : apiUrl,
-      models: models,
+      apiUrl: ModelProvider.usesManagedApiUrl(name)
+          ? ModelProvider.fixedApiUrlFor(name)
+          : (apiUrl.isEmpty ? null : apiUrl),
+      models: models.isEmpty ? ModelProvider.suggestedModelsFor(name) : models,
     );
 
     setState(() {
@@ -544,7 +560,7 @@ class _SettingsPageState extends State<SettingsPage> {
       editor.nameController.text.trim().toLowerCase(),
     );
     final displayName = isKnown
-        ? editor.nameController.text.trim()
+        ? ModelProvider.displayNameFor(editor.nameController.text.trim())
         : widget.strings.text('settings.customProvider');
 
     return _SectionCard(

@@ -68,16 +68,11 @@ class ApiClient implements BackendApi {
 
   @override
   Future<void> testModelProvider(ModelProvider provider) async {
-    if (provider.apiUrl != null && provider.apiUrl!.trim().isNotEmpty) {
-      // Test via integrated client when custom URL is provided
+    if ((provider.apiUrl != null && provider.apiUrl!.trim().isNotEmpty) ||
+        ModelProvider.usesManagedApiUrl(provider.name)) {
       final client = IntegratedLlmClient();
       try {
-        await client.testProvider(
-          provider.name,
-          provider.apiKey,
-          apiBase: provider.apiUrl,
-          model: provider.models.isNotEmpty ? provider.models.first : null,
-        );
+        await client.testModelProvider(provider);
       } finally {
         client.dispose();
       }

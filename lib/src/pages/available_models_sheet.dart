@@ -65,6 +65,7 @@ class _AvailableModelsSheetState extends State<AvailableModelsSheet> {
 
     try {
       final providerName = widget.providerName ?? 'openai';
+      final providerLabel = ModelProvider.displayNameFor(providerName);
       final apiKey = widget.apiKey ?? '';
       final apiUrl = widget.apiUrl;
 
@@ -116,16 +117,13 @@ class _AvailableModelsSheetState extends State<AvailableModelsSheet> {
         if (modelId.isEmpty || modelId.startsWith('ft:')) {
           continue;
         }
-        modelsData.add(_AvailableModel(modelId, modelId, providerName));
+        modelsData.add(_AvailableModel(modelId, modelId, providerLabel));
       }
 
       if (modelsData.isEmpty) {
-        final defaults =
-            ModelProvider.defaultModels[providerName.toLowerCase()];
-        if (defaults != null) {
-          for (final modelId in defaults) {
-            modelsData.add(_AvailableModel(modelId, modelId, providerName));
-          }
+        final defaults = ModelProvider.suggestedModelsFor(providerName);
+        for (final modelId in defaults) {
+          modelsData.add(_AvailableModel(modelId, modelId, providerLabel));
         }
       }
 

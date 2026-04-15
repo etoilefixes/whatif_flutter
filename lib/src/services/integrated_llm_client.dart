@@ -12,27 +12,9 @@ class IntegratedLlmClient {
 
   final http.Client _client;
 
-  static const Map<String, String> _defaultBaseUrls = <String, String>{
-    'openai': 'https://api.openai.com/v1',
-    'dashscope': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    'anthropic': 'https://api.anthropic.com/v1',
-    'gemini': 'https://generativelanguage.googleapis.com/v1beta/openai',
-    'volcengine': 'https://ark.cn-beijing.volces.com/api/v3',
-    'nvidia': 'https://integrate.api.nvidia.com/v1',
-  };
-
-  static const Map<String, String> _defaultTestModels = <String, String>{
-    'openai': 'gpt-4o-mini',
-    'dashscope': 'qwen3.5-flash',
-    'anthropic': 'claude-sonnet-4-20250514',
-    'gemini': 'gemini-2.0-flash',
-    'volcengine': 'doubao-1-5-pro-32k-250115',
-    'nvidia': 'meta/llama-3.1-8b-instruct',
-  };
-
   bool supportsProvider(String provider, {String? apiBase}) {
     return (apiBase != null && apiBase.trim().isNotEmpty) ||
-        _defaultBaseUrls.containsKey(provider.toLowerCase());
+        ModelProvider.usesManagedApiUrl(provider);
   }
 
   Future<void> testProvider(
@@ -50,8 +32,7 @@ class IntegratedLlmClient {
     await completeChat(
       provider: provider,
       apiKey: apiKey,
-      model:
-          model ?? _defaultTestModels[provider.toLowerCase()] ?? 'gpt-4o-mini',
+      model: model ?? _defaultTestModel(provider),
       temperature: 0,
       apiBase: apiBase,
       messages: const <Map<String, String>>[
@@ -65,16 +46,13 @@ class IntegratedLlmClient {
   }
 
   Future<void> testModelProvider(ModelProvider provider) async {
-    final apiBase = provider.apiUrl?.trim().isNotEmpty == true
-        ? provider.apiUrl!.trim()
-        : _defaultBaseUrls[provider.name.toLowerCase()];
     final model = provider.models.isNotEmpty
         ? provider.models.first
-        : _defaultTestModels[provider.name.toLowerCase()] ?? 'gpt-4o-mini';
+        : _defaultTestModel(provider.name);
     await testProvider(
       provider.name,
       provider.apiKey,
-      apiBase: apiBase,
+      apiBase: provider.apiUrl,
       model: model,
     );
   }
@@ -278,6 +256,14 @@ class IntegratedLlmClient {
     }
 
     return 'HTTP $statusCode';
+  }
+
+  String _defaultTestModel(String provider) {
+    final suggestedModels = ModelProvider.suggestedModelsFor(provider);
+    if (suggestedModels.isNotEmpty) {
+      return suggestedModels.first;
+    }
+    return 'gpt-4o-mini';
   }
 
   void dispose() {

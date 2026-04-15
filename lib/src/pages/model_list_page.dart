@@ -109,9 +109,8 @@ class _ModelListViewState extends State<ModelListView> {
 
   /// 加载预设模型列表
   void _loadDefaultModels() {
-    final providerName = widget.providerName.toLowerCase();
-    final defaultModels = ModelProvider.defaultModels[providerName];
-    if (defaultModels != null && defaultModels.isNotEmpty) {
+    final defaultModels = ModelProvider.suggestedModelsFor(widget.providerName);
+    if (defaultModels.isNotEmpty) {
       setState(() => _models = List.from(defaultModels));
       widget.onModelsChanged(_models);
     }
@@ -124,8 +123,7 @@ class _ModelListViewState extends State<ModelListView> {
     // 模拟从 API 获取模型列表
     await Future.delayed(const Duration(seconds: 1));
 
-    final providerName = widget.providerName.toLowerCase();
-    final defaultModels = ModelProvider.defaultModels[providerName] ?? [];
+    final defaultModels = ModelProvider.suggestedModelsFor(widget.providerName);
 
     if (mounted) {
       setState(() {
@@ -138,7 +136,10 @@ class _ModelListViewState extends State<ModelListView> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('已获取模型', style: TextStyle(color: _DarkTheme.textPrimary)),
+          content: const Text(
+            '已获取模型',
+            style: TextStyle(color: _DarkTheme.textPrimary),
+          ),
           backgroundColor: _DarkTheme.card,
         ),
       );
@@ -226,7 +227,10 @@ class _ModelListViewState extends State<ModelListView> {
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: _DarkTheme.textSecondary),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _DarkTheme.textSecondary,
+                      ),
                     )
                   : const Icon(Icons.cloud_download_outlined),
               color: _DarkTheme.primary,
@@ -302,7 +306,10 @@ class _ModelListViewState extends State<ModelListView> {
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: _DarkTheme.textSecondary),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _DarkTheme.textSecondary,
+                        ),
                       )
                     : const Icon(Icons.cloud_download_outlined),
                 label: const Text('获取模型'),
@@ -334,21 +341,14 @@ class _ModelListViewState extends State<ModelListView> {
       itemCount: _models.length,
       itemBuilder: (context, index) {
         final model = _models[index];
-        return ModelCard(
-          model: model,
-          onDelete: () => _removeModel(index),
-        );
+        return ModelCard(model: model, onDelete: () => _removeModel(index));
       },
     );
   }
 }
 
 class ModelCard extends StatelessWidget {
-  const ModelCard({
-    super.key,
-    required this.model,
-    required this.onDelete,
-  });
+  const ModelCard({super.key, required this.model, required this.onDelete});
 
   final String model;
   final VoidCallback onDelete;
@@ -457,10 +457,7 @@ class ModelCard extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: _DarkTheme.tagBlueText,
-            ),
+            style: const TextStyle(fontSize: 12, color: _DarkTheme.tagBlueText),
           ),
         ],
       ),

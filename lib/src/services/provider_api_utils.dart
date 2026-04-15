@@ -51,18 +51,21 @@ String? resolveProviderApiBase({
   required String provider,
   String? customApiUrl,
 }) {
+  final providerKey = ModelProvider.canonicalProviderName(provider);
+  if (ModelProvider.usesManagedApiUrl(providerKey)) {
+    return normalizeProviderApiBase(ModelProvider.fixedApiUrlFor(providerKey));
+  }
+
   final provided = customApiUrl?.trim();
   final normalizedCustom = normalizeProviderApiBase(provided);
   if (normalizedCustom != null) {
     return _completeKnownOfficialBase(
-      provider: provider,
+      provider: providerKey,
       normalizedBase: normalizedCustom,
     );
   }
 
-  return normalizeProviderApiBase(
-    ModelProvider.defaultApiUrls[provider.toLowerCase()],
-  );
+  return normalizeProviderApiBase(ModelProvider.defaultApiUrls[providerKey]);
 }
 
 String buildProviderModelsUrl({
@@ -171,18 +174,21 @@ String _completeKnownOfficialBase({
 
   if (providerKey == 'openai' && host == 'api.openai.com') {
     officialPath = '/v1';
+  } else if (providerKey == 'deepseek' && host == 'api.deepseek.com') {
+    officialPath = '/v1';
+  } else if (providerKey == 'siliconflow' &&
+      (host == 'api.siliconflow.cn' || host == 'api.siliconflow.com')) {
+    officialPath = '/v1';
   } else if (providerKey == 'anthropic' && host == 'api.anthropic.com') {
     officialPath = '/v1';
   } else if (providerKey == 'gemini' &&
       host == 'generativelanguage.googleapis.com') {
     officialPath = '/v1beta/openai';
-  } else if (providerKey == 'dashscope' &&
-      host == 'dashscope.aliyuncs.com') {
+  } else if (providerKey == 'dashscope' && host == 'dashscope.aliyuncs.com') {
     officialPath = '/compatible-mode/v1';
   } else if (providerKey == 'volcengine' && host.endsWith('.volces.com')) {
-    officialPath = '/api/v3';
-  } else if (providerKey == 'nvidia' &&
-      host == 'integrate.api.nvidia.com') {
+    officialPath = '/api/coding/v3';
+  } else if (providerKey == 'nvidia' && host == 'integrate.api.nvidia.com') {
     officialPath = '/v1';
   }
 
@@ -190,5 +196,7 @@ String _completeKnownOfficialBase({
     return normalizedBase;
   }
 
-  return uri.replace(path: officialPath, query: null, fragment: null).toString();
+  return uri
+      .replace(path: officialPath, query: null, fragment: null)
+      .toString();
 }

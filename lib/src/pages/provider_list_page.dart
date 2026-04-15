@@ -5,7 +5,6 @@ import '../l10n/app_strings.dart';
 import '../models.dart';
 import 'provider_config_page.dart';
 
-// 深色主题颜色常量
 class _DarkTheme {
   static const Color background = Color(0xFF0D1117);
   static const Color card = Color(0xFF161B22);
@@ -14,13 +13,11 @@ class _DarkTheme {
   static const Color textPrimary = Color(0xFFE6EDF3);
   static const Color textSecondary = Color(0xFF8B949E);
   static const Color textMuted = Color(0xFF6E7681);
+  static const Color selectedBg = Color(0xFF21262D);
   static const Color tagGreen = Color(0xFF238636);
-  static const Color tagGreenBg = Color(0xFF2EA043);
-  static const Color tagBlue = Color(0xFF1F6FEB);
-  static const Color tagBlueBg = Color(0xFF388BFD);
-  static const double radius = 12.0;
-  static const double radiusLg = 16.0;
-  static const double radiusSm = 8.0;
+  static const double radius = 12;
+  static const double radiusLg = 16;
+  static const double radiusSm = 8;
 }
 
 class ProviderListPage extends StatefulWidget {
@@ -41,6 +38,10 @@ class _ProviderListPageState extends State<ProviderListPage> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  bool get _isZh => widget.strings.locale.startsWith('zh');
+
+  String t(String zh, String en) => _isZh ? zh : en;
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -48,13 +49,19 @@ class _ProviderListPageState extends State<ProviderListPage> {
   }
 
   List<ModelProvider> get _filteredProviders {
-    if (_searchQuery.isEmpty) {
-      return widget.controller.modelProviders;
+    final providers = widget.controller.modelProviders;
+    if (_searchQuery.trim().isEmpty) {
+      return providers;
     }
-    final query = _searchQuery.toLowerCase();
-    return widget.controller.modelProviders
-        .where((p) => p.name.toLowerCase().contains(query))
-        .toList();
+
+    final query = _searchQuery.trim().toLowerCase();
+    return providers.where((provider) {
+      final displayName = ModelProvider.displayNameFor(
+        provider.name,
+      ).toLowerCase();
+      return provider.name.toLowerCase().contains(query) ||
+          displayName.contains(query);
+    }).toList();
   }
 
   Future<void> _navigateToProviderConfig(ModelProvider? provider) async {
@@ -81,30 +88,36 @@ class _ProviderListPageState extends State<ProviderListPage> {
           borderRadius: BorderRadius.circular(_DarkTheme.radiusLg),
           side: const BorderSide(color: _DarkTheme.border),
         ),
-        title: Text(widget.strings.text('provider.deleteTitle')),
+        title: Text(t('删除提供商', 'Delete Provider')),
         content: Text(
-          widget.strings
-              .text('provider.deleteConfirm')
-              .replaceAll('{name}', provider.name),
+          t(
+            '确定要删除 ${ModelProvider.displayNameFor(provider.name)} 吗？此操作无法撤销。',
+            'Delete ${ModelProvider.displayNameFor(provider.name)}? This action cannot be undone.',
+          ),
+          style: const TextStyle(color: _DarkTheme.textPrimary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
+            child: Text(t('取消', 'Cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('删除'),
+            child: Text(t('删除', 'Delete')),
           ),
         ],
       ),
     );
 
-    if (confirmed == true) {
-      final updated = widget.controller.modelProviders
-          .where((p) => p.name != provider.name)
-          .toList();
-      await widget.controller.saveModelProviders(updated);
+    if (confirmed != true) {
+      return;
+    }
+
+    final updated = widget.controller.modelProviders
+        .where((item) => item.name != provider.name)
+        .toList();
+    await widget.controller.saveModelProviders(updated);
+    if (mounted) {
       setState(() {});
     }
   }
@@ -117,23 +130,15 @@ class _ProviderListPageState extends State<ProviderListPage> {
         backgroundColor: _DarkTheme.background,
         elevation: 0,
         leading: const BackButton(color: _DarkTheme.textPrimary),
-        title: const Text(
-          '模型商',
-          style: TextStyle(
-            fontSize: 28,
+        title: Text(
+          t('模型提供商', 'Model Providers'),
+          style: const TextStyle(
+            fontSize: 24,
             fontWeight: FontWeight.bold,
             color: _DarkTheme.textPrimary,
           ),
         ),
         actions: [
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.history, color: _DarkTheme.textPrimary),
-          ),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.terminal, color: _DarkTheme.textPrimary),
-          ),
           IconButton(
             onPressed: () => _navigateToProviderConfig(null),
             icon: const Icon(Icons.add, color: _DarkTheme.textPrimary),
@@ -144,20 +149,20 @@ class _ProviderListPageState extends State<ProviderListPage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // 搜索栏
             TextField(
               controller: _searchController,
               onChanged: (value) => setState(() => _searchQuery = value),
               style: const TextStyle(color: _DarkTheme.textPrimary),
               decoration: InputDecoration(
-                hintText: '搜索提供商',
+                hintText: t('搜索提供商', 'Search providers'),
                 hintStyle: const TextStyle(color: _DarkTheme.textMuted),
                 prefixIcon: const Icon(
                   Icons.search,
                   color: _DarkTheme.textMuted,
                 ),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
+                suffixIcon: _searchQuery.isEmpty
+                    ? null
+                    : IconButton(
                         onPressed: () {
                           _searchController.clear();
                           setState(() => _searchQuery = '');
@@ -166,8 +171,7 @@ class _ProviderListPageState extends State<ProviderListPage> {
                           Icons.clear,
                           color: _DarkTheme.textMuted,
                         ),
-                      )
-                    : null,
+                      ),
                 filled: true,
                 fillColor: _DarkTheme.card,
                 border: OutlineInputBorder(
@@ -185,11 +189,28 @@ class _ProviderListPageState extends State<ProviderListPage> {
               ),
             ),
             const SizedBox(height: 16),
-            // 双列网格
             Expanded(
               child: _filteredProviders.isEmpty
                   ? _buildEmptyState()
-                  : _buildProviderGrid(),
+                  : GridView.builder(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 1.55,
+                          ),
+                      itemCount: _filteredProviders.length,
+                      itemBuilder: (context, index) {
+                        final provider = _filteredProviders[index];
+                        return _ProviderCard(
+                          provider: provider,
+                          isZh: _isZh,
+                          onTap: () => _navigateToProviderConfig(provider),
+                          onDelete: () => _deleteProvider(provider),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -209,9 +230,9 @@ class _ProviderListPageState extends State<ProviderListPage> {
           ),
           const SizedBox(height: 16),
           Text(
-            '暂无提供商',
+            t('还没有配置提供商', 'No providers configured yet'),
             style: TextStyle(
-              color: _DarkTheme.textMuted.withOpacity(0.7),
+              color: _DarkTheme.textMuted.withOpacity(0.8),
               fontSize: 16,
             ),
           ),
@@ -219,69 +240,51 @@ class _ProviderListPageState extends State<ProviderListPage> {
           FilledButton.icon(
             onPressed: () => _navigateToProviderConfig(null),
             icon: const Icon(Icons.add),
-            label: const Text('添加第一个提供商'),
-            style: FilledButton.styleFrom(backgroundColor: _DarkTheme.primary),
+            label: Text(t('添加第一个提供商', 'Add your first provider')),
+            style: FilledButton.styleFrom(
+              backgroundColor: _DarkTheme.primary,
+              foregroundColor: _DarkTheme.background,
+            ),
           ),
         ],
       ),
     );
   }
-
-  Widget _buildProviderGrid() {
-    return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 1.6,
-      ),
-      itemCount: _filteredProviders.length,
-      itemBuilder: (context, index) {
-        final provider = _filteredProviders[index];
-        return ProviderCard(
-          provider: provider,
-          onTap: () => _navigateToProviderConfig(provider),
-          onDelete: () => _deleteProvider(provider),
-        );
-      },
-    );
-  }
 }
 
-class ProviderCard extends StatelessWidget {
-  const ProviderCard({
-    super.key,
+class _ProviderCard extends StatelessWidget {
+  const _ProviderCard({
     required this.provider,
+    required this.isZh,
     required this.onTap,
     required this.onDelete,
   });
 
   final ModelProvider provider;
+  final bool isZh;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
-  String get _displayName {
-    final name = provider.name.toLowerCase();
-    if (ModelProvider.knownProviders.contains(name)) {
-      return provider.name;
-    }
-    return '自定义';
-  }
+  String t(String zh, String en) => isZh ? zh : en;
 
   IconData get _providerIcon {
-    final name = provider.name.toLowerCase();
-    switch (name) {
+    switch (ModelProvider.canonicalProviderName(provider.name)) {
       case 'openai':
         return Icons.psychology;
+      case 'deepseek':
+        return Icons.bolt_outlined;
+      case 'siliconflow':
+        return Icons.stream_outlined;
       case 'anthropic':
-      case 'claude':
         return Icons.auto_awesome;
       case 'gemini':
         return Icons.diamond_outlined;
       case 'dashscope':
         return Icons.cloud_outlined;
       case 'volcengine':
-        return Icons.bar_chart;
+        return Icons.bar_chart_outlined;
+      case 'nvidia':
+        return Icons.memory_rounded;
       default:
         return Icons.hub;
     }
@@ -289,73 +292,109 @@ class ProviderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: _DarkTheme.card,
-          borderRadius: BorderRadius.circular(_DarkTheme.radiusLg),
-          border: Border.all(color: _DarkTheme.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Icon(_providerIcon, size: 32, color: _DarkTheme.primary),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (provider.isUsable)
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: _DarkTheme.tagGreen,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    const SizedBox(width: 8),
-                    const Icon(
-                      Icons.drag_indicator,
+    final displayName =
+        ModelProvider.knownProviders.contains(
+          ModelProvider.canonicalProviderName(provider.name),
+        )
+        ? ModelProvider.displayNameFor(provider.name)
+        : provider.name;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(_DarkTheme.radiusLg),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _DarkTheme.card,
+            borderRadius: BorderRadius.circular(_DarkTheme.radiusLg),
+            border: Border.all(color: _DarkTheme.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: _DarkTheme.selectedBg,
+                      borderRadius: BorderRadius.circular(_DarkTheme.radius),
+                    ),
+                    child: Icon(_providerIcon, color: _DarkTheme.primary),
+                  ),
+                  const Spacer(),
+                  PopupMenuButton<String>(
+                    color: _DarkTheme.card,
+                    icon: const Icon(
+                      Icons.more_horiz,
                       color: _DarkTheme.textMuted,
                     ),
-                  ],
-                ),
-              ],
-            ),
-            const Spacer(),
-            Text(
-              _displayName,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: _DarkTheme.textPrimary,
+                    onSelected: (value) {
+                      if (value == 'delete') {
+                        onDelete();
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem<String>(
+                        value: 'delete',
+                        child: Text(
+                          t('删除', 'Delete'),
+                          style: const TextStyle(color: _DarkTheme.textPrimary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                _Tag(
-                  text: provider.isUsable ? '已配置' : '未配置',
-                  backgroundColor: provider.isUsable
-                      ? _DarkTheme.tagGreen.withOpacity(0.2)
-                      : const Color(0x33C96B54),
-                  textColor: provider.isUsable
-                      ? _DarkTheme.tagGreen
-                      : const Color(0xFFC96B54),
+              const Spacer(),
+              Text(
+                displayName,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: _DarkTheme.textPrimary,
                 ),
-                const SizedBox(width: 6),
-                _Tag(
-                  text: '${provider.models.length}个模型',
-                  backgroundColor: _DarkTheme.primary.withOpacity(0.15),
-                  textColor: _DarkTheme.primary,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                provider.apiKey.trim().isEmpty
+                    ? t('未配置密钥', 'API key missing')
+                    : t('只需填写密钥', 'Key-only preset'),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: _DarkTheme.textSecondary,
                 ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _Tag(
+                    text: provider.isUsable
+                        ? t('已启用', 'Enabled')
+                        : t('未启用', 'Disabled'),
+                    backgroundColor: provider.isUsable
+                        ? _DarkTheme.tagGreen.withOpacity(0.2)
+                        : _DarkTheme.primary.withOpacity(0.15),
+                    textColor: provider.isUsable
+                        ? _DarkTheme.tagGreen
+                        : _DarkTheme.primary,
+                  ),
+                  _Tag(
+                    text: '${provider.models.length} ${t('个模型', 'models')}',
+                    backgroundColor: _DarkTheme.selectedBg,
+                    textColor: _DarkTheme.textPrimary,
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -376,7 +415,7 @@ class _Tag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(_DarkTheme.radiusSm),
