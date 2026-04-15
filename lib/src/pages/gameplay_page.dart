@@ -48,6 +48,7 @@ class _GameplayPageState extends State<GameplayPage> {
   bool _conversationMode = false;
   bool _conversationOwnsVoice = false;
   bool _textHidden = false;
+  bool _scrollToBottomScheduled = false;
   String? _error;
   String? _phase;
   String? _eventId;
@@ -152,7 +153,7 @@ class _GameplayPageState extends State<GameplayPage> {
         _backgroundImageBytes = null;
       });
       unawaited(_refreshBackgroundImage(resume.eventId, resume.eventHasImage));
-      _jumpToBottom();
+      _jumpToBottom(animated: false);
       return;
     }
 
@@ -565,7 +566,7 @@ class _GameplayPageState extends State<GameplayPage> {
               );
               narrationBuffer.write(event.text ?? '');
             });
-            _jumpToBottom();
+            _jumpToBottom(animated: false);
             break;
           case 'audio':
             if (_ttsEnabled && !_usesLocalTts) {
@@ -607,7 +608,7 @@ class _GameplayPageState extends State<GameplayPage> {
             }
 
             if (addedDivider) {
-              _jumpToBottom();
+              _jumpToBottom(animated: false);
             }
             break;
           case 'error':
@@ -621,7 +622,7 @@ class _GameplayPageState extends State<GameplayPage> {
                 ),
               );
             });
-            _jumpToBottom();
+            _jumpToBottom(animated: false);
             break;
           case 'done':
             break;
@@ -653,7 +654,7 @@ class _GameplayPageState extends State<GameplayPage> {
             _entries[streamingIndex] = current.copyWith(streaming: false);
           }
         });
-        _jumpToBottom();
+        _jumpToBottom(animated: false);
 
         if (_conversationMode &&
             _error == null &&
@@ -714,7 +715,7 @@ class _GameplayPageState extends State<GameplayPage> {
       }
     });
     _actionController.clear();
-    _jumpToBottom();
+    _jumpToBottom(animated: false);
 
     await _runStream(
       widget.controller.api.submitActionStream(
@@ -745,14 +746,28 @@ class _GameplayPageState extends State<GameplayPage> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _jumpToBottom() {
+  void _jumpToBottom({bool animated = true}) {
+    if (_scrollToBottomScheduled) {
+      return;
+    }
+    _scrollToBottomScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottomScheduled = false;
       if (!_scrollController.hasClients) {
         return;
       }
+
+      final position = _scrollController.position;
+      final target = position.maxScrollExtent;
+      final distance = (target - position.pixels).abs();
+      if (!animated || distance > 320) {
+        _scrollController.jumpTo(target);
+        return;
+      }
+
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent + 120,
-        duration: const Duration(milliseconds: 250),
+        target,
+        duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
       );
     });
@@ -777,88 +792,174 @@ class _GameplayPageState extends State<GameplayPage> {
         _conversationState != _ConversationState.submitting;
     final showTakeTurnButton = _canTakeTurnNow && !_conversationMode;
 
-    return Stack(
-      children: [
-        if (_backgroundImageBytes != null)
-          Positioned.fill(
-            child: Image.memory(
-              _backgroundImageBytes!,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) =>
-                  const SizedBox.shrink(),
-            ),
-          ),
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withValues(alpha: _textHidden ? 0.1 : 0.42),
-                  Colors.black.withValues(alpha: _textHidden ? 0.18 : 0.66),
-                  Colors.black.withValues(alpha: _textHidden ? 0.28 : 0.9),
-                ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wideLayout = constraints.maxWidth >= 1220;
+
+        return Stack(
+          children: [
+            if (_backgroundImageBytes != null)
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: Image.memory(
+                    _backgroundImageBytes!,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                    filterQuality: FilterQuality.low,
+                    errorBuilder: (context, error, stackTrace) =>
+                        const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: _textHidden ? 0.1 : 0.42),
+                      Colors.black.withValues(alpha: _textHidden ? 0.18 : 0.66),
+                      Colors.black.withValues(alpha: _textHidden ? 0.28 : 0.9),
+                    ],
+                  ),
+                ),
               ),
             ),
+            Column(
+              children: [
+                _buildTopBar(context),
+                Expanded(
+                  child: wideLayout
+                      ? Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                flex: 7,
+                                child: _buildStoryPane(
+                                  context,
+                                  wideLayout: true,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              SizedBox(
+                                width: 360,
+                                child: _buildControlsPane(
+                                  context,
+                                  showContinueButton: showContinueButton,
+                                  showTakeTurnButton: showTakeTurnButton,
+                                  wideLayout: true,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : Column(
+                          children: [
+                            Expanded(
+                              child: _buildStoryPane(
+                                context,
+                                wideLayout: false,
+                              ),
+                            ),
+                            if (_showInput && !_conversationMode)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  24,
+                                  0,
+                                  24,
+                                  12,
+                                ),
+                                child: _buildActionComposer(
+                                  context,
+                                  vertical: constraints.maxWidth < 640,
+                                ),
+                              ),
+                            if (!_showInput)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  24,
+                                  0,
+                                  24,
+                                  20,
+                                ),
+                                child: _buildControlsPane(
+                                  context,
+                                  showContinueButton: showContinueButton,
+                                  showTakeTurnButton: showTakeTurnButton,
+                                  wideLayout: false,
+                                ),
+                              ),
+                          ],
+                        ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTopBar(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          IconButton.filledTonal(
+            onPressed: _goBackHome,
+            icon: const Icon(Icons.arrow_back_rounded),
           ),
-        ),
-        Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-              child: Row(
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.strings.text('gameplay.title'),
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                Text(
+                  widget.controller.currentPkgName ?? '-',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFFADC0D8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.end,
                 children: [
-                  IconButton.filledTonal(
-                    onPressed: _goBackHome,
-                    icon: const Icon(Icons.arrow_back_rounded),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.strings.text('gameplay.title'),
-                          style: Theme.of(context).textTheme.headlineSmall,
-                        ),
-                        Text(
-                          widget.controller.currentPkgName ?? '-',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: const Color(0xFFADC0D8)),
-                        ),
-                      ],
-                    ),
-                  ),
                   if (_backgroundImageBytes != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: IconButton.filledTonal(
-                        onPressed: () {
-                          setState(() {
-                            _textHidden = !_textHidden;
-                          });
-                        },
-                        icon: Icon(
-                          _textHidden
-                              ? Icons.visibility_rounded
-                              : Icons.visibility_off_rounded,
-                        ),
+                    IconButton.filledTonal(
+                      onPressed: () {
+                        setState(() {
+                          _textHidden = !_textHidden;
+                        });
+                      },
+                      icon: Icon(
+                        _textHidden
+                            ? Icons.visibility_rounded
+                            : Icons.visibility_off_rounded,
                       ),
                     ),
                   if (_phase != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: _MetaChip(
-                        label: _phaseLabel(widget.strings, _phase),
-                      ),
-                    ),
+                    _MetaChip(label: _phaseLabel(widget.strings, _phase)),
                   _MetaChip(
                     label: widget.strings.text('saves.turn', {
                       'turn': _turn.toString(),
                     }),
                   ),
-                  const SizedBox(width: 8),
                   if (_gameEnded)
                     Chip(label: Text(widget.strings.text('gameplay.gameEnded')))
                   else if (_busy)
@@ -870,196 +971,349 @@ class _GameplayPageState extends State<GameplayPage> {
                 ],
               ),
             ),
-            if (_restoredFromSave)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Chip(
-                    avatar: const Icon(Icons.history_rounded, size: 18),
-                    label: Text(widget.strings.text('gameplay.resumeLoaded')),
-                  ),
-                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStoryPane(BuildContext context, {required bool wideLayout}) {
+    final content = Column(
+      children: [
+        if (_restoredFromSave)
+          Padding(
+            padding: wideLayout
+                ? const EdgeInsets.fromLTRB(18, 18, 18, 0)
+                : const EdgeInsets.symmetric(horizontal: 24),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Chip(
+                avatar: const Icon(Icons.history_rounded, size: 18),
+                label: Text(widget.strings.text('gameplay.resumeLoaded')),
               ),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    color: const Color(0x33C96B54),
-                  ),
-                  child: Text(_error!),
-                ),
-              ),
-            Expanded(
-              child: _entries.isEmpty
-                  ? Center(
-                      child: Text(
-                        widget.strings.text('gameplay.empty'),
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: const Color(0xFFA7B5CC),
-                        ),
-                      ),
-                    )
-                  : ListView.separated(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(24, 18, 24, 18),
-                      itemCount: _entries.length,
-                      separatorBuilder: (context, index) =>
-                          const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final entry = _entries[index];
-                        return _StoryBubble(
-                          entry: entry,
-                          textHidden: _textHidden,
-                        );
-                      },
-                    ),
             ),
-            if (_showInput && !_conversationMode)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _actionController,
-                        autofocus: true,
-                        minLines: 1,
-                        maxLines: 4,
-                        decoration: InputDecoration(
-                          hintText: widget.strings.text('gameplay.inputHint'),
-                        ),
-                        onSubmitted: (_) => unawaited(_submitAction()),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    FilledButton(
-                      onPressed: _busy
-                          ? null
-                          : () => unawaited(_submitAction()),
-                      child: Text(widget.strings.text('gameplay.submit')),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.tonal(
-                      onPressed: _busy
-                          ? null
-                          : () {
-                              setState(() {
-                                _showInput = false;
-                              });
-                            },
-                      child: Text(widget.strings.text('gameplay.cancel')),
-                    ),
-                  ],
-                ),
+          ),
+        if (_error != null)
+          Padding(
+            padding: wideLayout
+                ? const EdgeInsets.fromLTRB(18, 12, 18, 0)
+                : const EdgeInsets.fromLTRB(24, 12, 24, 0),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                color: const Color(0x33C96B54),
               ),
-            if (!_showInput)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_conversationMode &&
-                        _conversationState != _ConversationState.off) ...[
-                      _ConversationBanner(
-                        state: _conversationState,
-                        transcript: _liveTranscript,
-                        strings: widget.strings,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        FilledButton.tonalIcon(
-                          onPressed: _busy ? null : _openSaveDialog,
-                          icon: const Icon(Icons.save_rounded),
-                          label: Text(
-                            _localizedText(
-                              widget.strings,
-                              'gameplay.save',
-                              'Save',
-                            ),
-                          ),
-                        ),
-                        FilledButton.tonalIcon(
-                          onPressed: _busy
-                              ? null
-                              : () => unawaited(_toggleVoice()),
-                          icon: Icon(
-                            widget.controller.voiceConfig.enabled
-                                ? Icons.volume_up_rounded
-                                : Icons.volume_off_rounded,
-                          ),
-                          label: Text(
-                            widget.controller.voiceConfig.enabled
-                                ? widget.strings.text('gameplay.voiceOn')
-                                : widget.strings.text('gameplay.voiceOff'),
-                          ),
-                        ),
-                        if (_speechReady)
-                          FilledButton.tonalIcon(
-                            onPressed: _busy && !_conversationMode
-                                ? null
-                                : () => unawaited(_toggleConversationMode()),
-                            icon: Icon(
-                              _conversationMode
-                                  ? Icons.chat_bubble_rounded
-                                  : Icons.chat_bubble_outline_rounded,
-                            ),
-                            label: Text(
-                              _conversationMode
-                                  ? widget.strings.text(
-                                      'gameplay.conversationOn',
-                                    )
-                                  : widget.strings.text(
-                                      'gameplay.conversationOff',
-                                    ),
-                            ),
-                          ),
-                        if (showTakeTurnButton)
-                          FilledButton.icon(
-                            onPressed: _busy
-                                ? null
-                                : () {
-                                    setState(() {
-                                      _showInput = true;
-                                    });
-                                  },
-                            icon: const Icon(Icons.edit_rounded),
-                            label: Text(
-                              widget.strings.text('gameplay.takeTurn'),
-                            ),
-                          ),
-                        if (showContinueButton)
-                          FilledButton.icon(
-                            onPressed: _busy
-                                ? null
-                                : () => unawaited(_continueStory()),
-                            icon: const Icon(Icons.fast_forward_rounded),
-                            label: Text(
-                              widget.strings.text('gameplay.continue'),
-                            ),
-                          ),
-                        if (!showContinueButton &&
-                            !showTakeTurnButton &&
-                            !_gameEnded)
-                          Chip(
-                            label: Text(
-                              widget.strings.text('gameplay.awaiting'),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
+              child: Text(_error!),
+            ),
+          ),
+        Expanded(
+          child: _buildStoryList(
+            context,
+            padding: wideLayout
+                ? const EdgeInsets.fromLTRB(18, 18, 18, 18)
+                : const EdgeInsets.fromLTRB(24, 18, 24, 18),
+          ),
+        ),
+      ],
+    );
+
+    if (!wideLayout) {
+      return content;
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0x66111A2B),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0x223A4A68)),
+      ),
+      child: content,
+    );
+  }
+
+  Widget _buildStoryList(
+    BuildContext context, {
+    required EdgeInsetsGeometry padding,
+  }) {
+    if (_entries.isEmpty) {
+      return Center(
+        child: Text(
+          widget.strings.text('gameplay.empty'),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyLarge?.copyWith(color: const Color(0xFFA7B5CC)),
+        ),
+      );
+    }
+
+    return Scrollbar(
+      controller: _scrollController,
+      thumbVisibility: MediaQuery.sizeOf(context).width >= 1220,
+      child: RepaintBoundary(
+        child: ListView.separated(
+          controller: _scrollController,
+          cacheExtent: 1400,
+          padding: padding,
+          itemCount: _entries.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final entry = _entries[index];
+            return _StoryBubble(entry: entry, textHidden: _textHidden);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildControlsPane(
+    BuildContext context, {
+    required bool showContinueButton,
+    required bool showTakeTurnButton,
+    required bool wideLayout,
+  }) {
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (wideLayout) ...[
+          Text(
+            _localizedText(
+              widget.strings,
+              'gameplay.controlsTitle',
+              'Adventure Controls',
+            ),
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _localizedText(
+              widget.strings,
+              'gameplay.controlsHint',
+              'Keep actions, save slots, voice and conversation tools on the side while the story stays readable.',
+            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: const Color(0xFFA7B5CC)),
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (_conversationMode &&
+            _conversationState != _ConversationState.off) ...[
+          _ConversationBanner(
+            state: _conversationState,
+            transcript: _liveTranscript,
+            strings: widget.strings,
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (_showInput && !_conversationMode && wideLayout) ...[
+          _buildActionComposer(context, vertical: true),
+          const SizedBox(height: 14),
+        ],
+        _buildActionButtons(
+          context,
+          showContinueButton: showContinueButton,
+          showTakeTurnButton: showTakeTurnButton,
+          wideLayout: wideLayout,
+        ),
+      ],
+    );
+
+    if (!wideLayout) {
+      return content;
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xCC101A2B),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0x223A4A68)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 30,
+            offset: Offset(0, 18),
+          ),
+        ],
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(18),
+        child: content,
+      ),
+    );
+  }
+
+  Widget _buildActionButtons(
+    BuildContext context, {
+    required bool showContinueButton,
+    required bool showTakeTurnButton,
+    required bool wideLayout,
+  }) {
+    Widget wrapAction(Widget child) {
+      if (!wideLayout) {
+        return child;
+      }
+      return SizedBox(width: double.infinity, child: child);
+    }
+
+    final actions = <Widget>[
+      wrapAction(
+        FilledButton.tonalIcon(
+          onPressed: _busy ? null : _openSaveDialog,
+          icon: const Icon(Icons.save_rounded),
+          label: Text(_localizedText(widget.strings, 'gameplay.save', 'Save')),
+        ),
+      ),
+      wrapAction(
+        FilledButton.tonalIcon(
+          onPressed: _busy ? null : () => unawaited(_toggleVoice()),
+          icon: Icon(
+            widget.controller.voiceConfig.enabled
+                ? Icons.volume_up_rounded
+                : Icons.volume_off_rounded,
+          ),
+          label: Text(
+            widget.controller.voiceConfig.enabled
+                ? widget.strings.text('gameplay.voiceOn')
+                : widget.strings.text('gameplay.voiceOff'),
+          ),
+        ),
+      ),
+      if (_speechReady)
+        wrapAction(
+          FilledButton.tonalIcon(
+            onPressed: _busy && !_conversationMode
+                ? null
+                : () => unawaited(_toggleConversationMode()),
+            icon: Icon(
+              _conversationMode
+                  ? Icons.chat_bubble_rounded
+                  : Icons.chat_bubble_outline_rounded,
+            ),
+            label: Text(
+              _conversationMode
+                  ? widget.strings.text('gameplay.conversationOn')
+                  : widget.strings.text('gameplay.conversationOff'),
+            ),
+          ),
+        ),
+      if (showTakeTurnButton)
+        wrapAction(
+          FilledButton.icon(
+            onPressed: _busy
+                ? null
+                : () {
+                    setState(() {
+                      _showInput = true;
+                    });
+                  },
+            icon: const Icon(Icons.edit_rounded),
+            label: Text(widget.strings.text('gameplay.takeTurn')),
+          ),
+        ),
+      if (showContinueButton)
+        wrapAction(
+          FilledButton.icon(
+            onPressed: _busy ? null : () => unawaited(_continueStory()),
+            icon: const Icon(Icons.fast_forward_rounded),
+            label: Text(widget.strings.text('gameplay.continue')),
+          ),
+        ),
+      if (!showContinueButton && !showTakeTurnButton && !_gameEnded)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Chip(label: Text(widget.strings.text('gameplay.awaiting'))),
+        ),
+    ];
+
+    if (!wideLayout) {
+      return Wrap(spacing: 12, runSpacing: 12, children: actions);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var index = 0; index < actions.length; index += 1) ...[
+          if (index > 0) const SizedBox(height: 12),
+          actions[index],
+        ],
+      ],
+    );
+  }
+
+  Widget _buildActionComposer(BuildContext context, {required bool vertical}) {
+    if (!vertical) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _actionController,
+              autofocus: true,
+              minLines: 1,
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText: widget.strings.text('gameplay.inputHint'),
               ),
+              onSubmitted: (_) => unawaited(_submitAction()),
+            ),
+          ),
+          const SizedBox(width: 12),
+          FilledButton(
+            onPressed: _busy ? null : () => unawaited(_submitAction()),
+            child: Text(widget.strings.text('gameplay.submit')),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.tonal(
+            onPressed: _busy
+                ? null
+                : () {
+                    setState(() {
+                      _showInput = false;
+                    });
+                  },
+            child: Text(widget.strings.text('gameplay.cancel')),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _actionController,
+          autofocus: true,
+          minLines: 3,
+          maxLines: 5,
+          decoration: InputDecoration(
+            hintText: widget.strings.text('gameplay.inputHint'),
+          ),
+          onSubmitted: (_) => unawaited(_submitAction()),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton(
+                onPressed: _busy ? null : () => unawaited(_submitAction()),
+                child: Text(widget.strings.text('gameplay.submit')),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton.tonal(
+                onPressed: _busy
+                    ? null
+                    : () {
+                        setState(() {
+                          _showInput = false;
+                        });
+                      },
+                child: Text(widget.strings.text('gameplay.cancel')),
+              ),
+            ),
           ],
         ),
       ],

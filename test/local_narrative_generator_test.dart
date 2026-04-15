@@ -17,7 +17,10 @@ void main() {
         'api_keys': '{"dashscope":"test-key"}',
       });
       final prefs = await SharedPreferences.getInstance();
-      final store = ConfigStore(prefs);
+      final store = await ConfigStore.open(
+        legacyPrefs: prefs,
+        useInMemoryDatabase: true,
+      );
       final tempRoot = await Directory.systemTemp.createTemp(
         'whatif_narrative_test_',
       );

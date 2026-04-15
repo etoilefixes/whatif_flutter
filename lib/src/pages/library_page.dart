@@ -22,6 +22,10 @@ class LibraryPage extends StatefulWidget {
 }
 
 class _LibraryPageState extends State<LibraryPage> {
+  final ScrollController _gridController = ScrollController();
+  final Map<String, Future<Uint8List?>> _coverFutures =
+      <String, Future<Uint8List?>>{};
+
   bool _loading = true;
   bool _importing = false;
   bool _buildingFromText = false;
@@ -45,6 +49,8 @@ class _LibraryPageState extends State<LibraryPage> {
       if (!mounted) {
         return;
       }
+      final filenames = packages.map((pkg) => pkg.filename).toSet();
+      _coverFutures.removeWhere((filename, _) => !filenames.contains(filename));
       setState(() {
         _packages = packages;
       });
@@ -220,6 +226,19 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
+  @override
+  void dispose() {
+    _gridController.dispose();
+    super.dispose();
+  }
+
+  Future<Uint8List?> _coverFutureFor(WorldPkgInfo pkg) {
+    return _coverFutures.putIfAbsent(
+      pkg.filename,
+      () => widget.controller.api.getWorldPkgCover(pkg.filename),
+    );
+  }
+
   Widget _buildBody(BuildContext context) {
     if (_loading) {
       return Center(
@@ -260,31 +279,45 @@ class _LibraryPageState extends State<LibraryPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = constraints.maxWidth >= 1100
-            ? 5
+            ? constraints.maxWidth >= 1500
+                  ? 6
+                  : 5
             : constraints.maxWidth >= 860
             ? 4
             : constraints.maxWidth >= 620
             ? 3
             : 2;
+        final childAspectRatio = constraints.maxWidth >= 1300 ? 0.78 : 0.72;
 
-        return GridView.builder(
-          padding: const EdgeInsets.all(24),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            crossAxisSpacing: 18,
-            mainAxisSpacing: 18,
-            childAspectRatio: 0.72,
+        return Scrollbar(
+          controller: _gridController,
+          thumbVisibility: constraints.maxWidth >= 960,
+          child: GridView.builder(
+            key: const PageStorageKey<String>('library-grid'),
+            controller: _gridController,
+            cacheExtent: 1400,
+            padding: const EdgeInsets.all(24),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: columns,
+              crossAxisSpacing: 18,
+              mainAxisSpacing: 18,
+              childAspectRatio: childAspectRatio,
+            ),
+            itemCount: _packages.length,
+            itemBuilder: (context, index) {
+              final pkg = _packages[index];
+              return RepaintBoundary(
+                child: _PackageCard(
+                  key: ValueKey(pkg.filename),
+                  pkg: pkg,
+                  controller: widget.controller,
+                  strings: widget.strings,
+                  coverFuture: _coverFutureFor(pkg),
+                  onSelect: () => _selectPackage(pkg),
+                ),
+              );
+            },
           ),
-          itemCount: _packages.length,
-          itemBuilder: (context, index) {
-            final pkg = _packages[index];
-            return _PackageCard(
-              pkg: pkg,
-              controller: widget.controller,
-              strings: widget.strings,
-              onSelect: () => _selectPackage(pkg),
-            );
-          },
         );
       },
     );
@@ -301,15 +334,18 @@ class _LibraryPageState extends State<LibraryPage> {
 
 class _PackageCard extends StatelessWidget {
   const _PackageCard({
+    super.key,
     required this.pkg,
     required this.controller,
     required this.strings,
+    required this.coverFuture,
     required this.onSelect,
   });
 
   final WorldPkgInfo pkg;
   final AppController controller;
   final AppStrings strings;
+  final Future<Uint8List?> coverFuture;
   final VoidCallback onSelect;
 
   @override
@@ -335,7 +371,7 @@ class _PackageCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   pkg.hasCover
-                      ? _CoverArt(pkg: pkg, controller: controller)
+                      ? _CoverArt(title: pkg.name, coverFuture: coverFuture)
                       : _FallbackCover(title: pkg.name),
                   Positioned(
                     top: 12,
@@ -397,25 +433,27 @@ class _PackageCard extends StatelessWidget {
 }
 
 class _CoverArt extends StatelessWidget {
-  const _CoverArt({required this.pkg, required this.controller});
+  const _CoverArt({required this.title, required this.coverFuture});
 
-  final WorldPkgInfo pkg;
-  final AppController controller;
+  final String title;
+  final Future<Uint8List?> coverFuture;
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Uint8List?>(
-      future: controller.api.getWorldPkgCover(pkg.filename),
+      future: coverFuture,
       builder: (context, snapshot) {
         final bytes = snapshot.data;
         if (bytes == null || bytes.isEmpty) {
-          return _FallbackCover(title: pkg.name);
+          return _FallbackCover(title: title);
         }
         return Image.memory(
           bytes,
           fit: BoxFit.cover,
+          gaplessPlayback: true,
+          filterQuality: FilterQuality.low,
           errorBuilder: (context, error, stackTrace) =>
-              _FallbackCover(title: pkg.name),
+              _FallbackCover(title: title),
         );
       },
     );

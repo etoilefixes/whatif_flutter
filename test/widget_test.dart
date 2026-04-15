@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_client/main.dart';
 import 'package:flutter_client/src/app_controller.dart';
@@ -11,12 +10,10 @@ void main() {
   testWidgets('renders loading shell before initialization completes', (
     tester,
   ) async {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
-    final preferences = await SharedPreferences.getInstance();
-    final controller = AppController(
-      store: ConfigStore(preferences),
-      api: ApiClient(),
-    );
+    final store = ConfigStore.inMemory();
+    final controller = AppController(store: store, api: ApiClient());
+    addTearDown(store.dispose);
+    addTearDown(controller.dispose);
 
     await tester.pumpWidget(WhatIfApp(controller: controller));
 

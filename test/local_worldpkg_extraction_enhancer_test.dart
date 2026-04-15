@@ -13,7 +13,10 @@ void main() {
       'api_keys': '{"dashscope":"test-key"}',
     });
     final prefs = await SharedPreferences.getInstance();
-    final store = ConfigStore(prefs);
+    final store = await ConfigStore.open(
+      legacyPrefs: prefs,
+      useInMemoryDatabase: true,
+    );
     final fakeClient = _FakeLlmClient();
 
     final enhancer = LocalLlmWorldPkgExtractionEnhancer(
@@ -146,7 +149,10 @@ void main() {
         'api_keys': '{"dashscope":"test-key"}',
       });
       final prefs = await SharedPreferences.getInstance();
-      final store = ConfigStore(prefs);
+      final store = await ConfigStore.open(
+        legacyPrefs: prefs,
+        useInMemoryDatabase: true,
+      );
       final client = _SequenceLlmClient(<String, List<String>>{
         'dashscope/event-model': <String>[
           '''
@@ -280,7 +286,10 @@ void main() {
         'api_keys': '{"dashscope":"test-key"}',
       });
       final prefs = await SharedPreferences.getInstance();
-      final store = ConfigStore(prefs);
+      final store = await ConfigStore.open(
+        legacyPrefs: prefs,
+        useInMemoryDatabase: true,
+      );
       final client = _SequenceLlmClient(<String, List<String>>{
         'dashscope/event-model': <String>[
           '''

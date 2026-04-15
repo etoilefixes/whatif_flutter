@@ -1,7 +1,7 @@
-import 'api_client.dart';
 import 'backend_api_contract.dart';
 import 'config_store.dart';
+import 'web_backend_api.dart';
 
 Future<BackendApi> createBackendApi({required ConfigStore store}) async {
-  return ApiClient(baseUrl: store.getBackendUrl());
+  return WebBackendApi.create(store: store);
 }

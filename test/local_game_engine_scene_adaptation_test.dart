@@ -34,7 +34,10 @@ void main() {
 
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final prefs = await SharedPreferences.getInstance();
-      final store = ConfigStore(prefs);
+      final store = await ConfigStore.open(
+        legacyPrefs: prefs,
+        useInMemoryDatabase: true,
+      );
       Future<LlmConfigMap> loadConfig() async => const LlmConfigMap(
         extractors: <String, LlmSlotConfig>{},
         agents: <String, LlmSlotConfig>{},
@@ -51,7 +54,10 @@ void main() {
       final engine = LocalGameEngine(
         savesDir: Directory('${tempRoot.path}\\saves'),
         narrativeGenerator: generator,
-        deviationAgent: _FixedDeviationAgent(store: store, loadConfig: loadConfig),
+        deviationAgent: _FixedDeviationAgent(
+          store: store,
+          loadConfig: loadConfig,
+        ),
         sceneAdaptationPlanner: LocalSceneAdaptationPlanner(
           store: store,
           llmClient: IntegratedLlmClient(),
@@ -92,14 +98,20 @@ void main() {
 
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final prefs = await SharedPreferences.getInstance();
-      final store = ConfigStore(prefs);
+      final store = await ConfigStore.open(
+        legacyPrefs: prefs,
+        useInMemoryDatabase: true,
+      );
       Future<LlmConfigMap> loadConfig() async => const LlmConfigMap(
         extractors: <String, LlmSlotConfig>{},
         agents: <String, LlmSlotConfig>{},
       );
       final engine = LocalGameEngine(
         savesDir: Directory('${tempRoot.path}\\saves'),
-        deviationAgent: _FixedDeviationAgent(store: store, loadConfig: loadConfig),
+        deviationAgent: _FixedDeviationAgent(
+          store: store,
+          loadConfig: loadConfig,
+        ),
         sceneAdaptationPlanner: LocalSceneAdaptationPlanner(
           store: store,
           llmClient: IntegratedLlmClient(),
@@ -144,12 +156,8 @@ class _RecordingNarrativeGenerator extends LocalNarrativeGenerator {
 }
 
 class _FixedDeviationAgent extends LocalDeviationAgent {
-  _FixedDeviationAgent({
-    required super.store,
-    required super.loadConfig,
-  }) : super(
-         llmClient: IntegratedLlmClient(),
-       );
+  _FixedDeviationAgent({required super.store, required super.loadConfig})
+    : super(llmClient: IntegratedLlmClient());
 
   @override
   Future<LocalDeviationAnalysis> analyze(LocalDeviationRequest request) async {

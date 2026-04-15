@@ -35,7 +35,10 @@ void main() {
 
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final prefs = await SharedPreferences.getInstance();
-      final store = ConfigStore(prefs);
+      final store = await ConfigStore.open(
+        legacyPrefs: prefs,
+        useInMemoryDatabase: true,
+      );
       Future<LlmConfigMap> loadConfig() async => const LlmConfigMap(
         extractors: <String, LlmSlotConfig>{},
         agents: <String, LlmSlotConfig>{},

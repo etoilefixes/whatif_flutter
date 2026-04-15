@@ -51,6 +51,21 @@ class LocalWorldPkg {
     'cover.webp': 'image/webp',
   };
 
+  static LocalWorldPkgIndex inspect(File file) {
+    final archive = ZipDecoder().decodeBytes(file.readAsBytesSync());
+    final metadata = _jsonEntry(archive, 'metadata.json') ?? const {};
+    final coverEntryName = _coverNames.keys.cast<String?>().firstWhere(
+      (name) => name != null && _findEntry(archive, name) != null,
+      orElse: () => null,
+    );
+
+    return LocalWorldPkgIndex(
+      title: metadata['title'] as String? ?? filenameFromFile(file),
+      size: file.lengthSync(),
+      hasCover: coverEntryName != null,
+    );
+  }
+
   static LocalWorldPkg load(File file) {
     final archive = ZipDecoder().decodeBytes(file.readAsBytesSync());
     final metadata = _jsonEntry(archive, 'metadata.json') ?? const {};
@@ -391,6 +406,27 @@ class LocalWorldEvent {
           LocalWorldPhase.fromJson(value as Map<String, dynamic>),
         ),
       ),
+    );
+  }
+}
+
+class LocalWorldPkgIndex {
+  const LocalWorldPkgIndex({
+    required this.title,
+    required this.size,
+    required this.hasCover,
+  });
+
+  final String title;
+  final int size;
+  final bool hasCover;
+
+  WorldPkgInfo toInfo(String filename) {
+    return WorldPkgInfo(
+      name: title,
+      filename: filename,
+      size: size,
+      hasCover: hasCover,
     );
   }
 }

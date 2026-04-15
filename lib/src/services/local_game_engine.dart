@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 
 import '../models.dart';
 import 'backend_api_contract.dart';
+import 'config_store.dart';
 import 'local_bridge_planner.dart';
 import 'local_context_enrichment.dart';
 import 'local_delta_state.dart';
@@ -19,6 +20,7 @@ import 'local_worldpkg.dart';
 class LocalGameEngine {
   LocalGameEngine({
     required Directory savesDir,
+    this.store,
     this.narrativeGenerator,
     this.deviationAgent,
     this.memoryCompression,
@@ -29,6 +31,7 @@ class LocalGameEngine {
        _contextEnrichment = contextEnrichment ?? const LocalContextEnrichment();
 
   final Directory _savesDir;
+  final ConfigStore? store;
   final LocalNarrativeGenerator? narrativeGenerator;
   final LocalDeviationAgent? deviationAgent;
   final LocalMemoryCompressionManager? memoryCompression;
@@ -90,29 +93,31 @@ class LocalGameEngine {
   }
 
   Future<List<SaveInfo>> listSaves() async {
-    await _savesDir.create(recursive: true);
-    final saves = <SaveInfo>[];
+    final persistedSaves = store == null
+        ? const <SaveInfo>[]
+        : await store!.listSavedGames();
+    final persisted = <int, SaveInfo>{
+      for (final save in persistedSaves) save.slot: save,
+    };
+    final legacySnapshots = await _listLegacySaveSnapshots();
 
-    await for (final entity in _savesDir.list()) {
-      if (entity is! Directory ||
-          !p.basename(entity.path).startsWith('save_')) {
-        continue;
+    if (store != null) {
+      for (final snapshot in legacySnapshots) {
+        final current = persisted[snapshot.info.slot];
+        if (!_shouldPreferLegacySave(snapshot.info, current)) {
+          continue;
+        }
+        await store!.saveGameSnapshot(
+          info: snapshot.info,
+          state: snapshot.state,
+        );
+        persisted[snapshot.info.slot] = snapshot.info;
       }
-
-      final metadataFile = File(p.join(entity.path, 'metadata.json'));
-      if (!metadataFile.existsSync()) {
-        continue;
-      }
-
-      final decoded = jsonDecode(metadataFile.readAsStringSync());
-      final metadata = _asMap(decoded);
-      if (metadata == null) {
-        continue;
-      }
-
-      saves.add(SaveInfo.fromJson(metadata));
     }
 
+    final saves = persisted.isNotEmpty
+        ? persisted.values.toList()
+        : legacySnapshots.map((snapshot) => snapshot.info).toList();
     saves.sort((left, right) => right.saveTime.compareTo(left.saveTime));
     return saves;
   }
@@ -161,31 +166,34 @@ class LocalGameEngine {
       'worldpkgTitle': world.title,
     };
 
-    File(
+    final saveInfo = SaveInfo.fromJson(metadata);
+    if (store != null) {
+      await store!.saveGameSnapshot(info: saveInfo, state: state);
+    }
+
+    await File(
       p.join(saveDir.path, 'state.json'),
-    ).writeAsStringSync(jsonEncode(state));
-    File(
+    ).writeAsString(jsonEncode(state), flush: true);
+    await File(
       p.join(saveDir.path, 'metadata.json'),
-    ).writeAsStringSync(jsonEncode(metadata));
+    ).writeAsString(jsonEncode(metadata), flush: true);
     return 'Saved to slot $slot';
   }
 
   Future<LoadGameResponse> loadGame(int slot) async {
     _invalidatePrefetch();
     final world = _requireWorld();
-    final saveDir = Directory(
-      p.join(_savesDir.path, 'save_${slot.toString().padLeft(3, '0')}'),
-    );
-    final stateFile = File(p.join(saveDir.path, 'state.json'));
-    if (!stateFile.existsSync()) {
+    final storedSnapshot = store == null
+        ? null
+        : await store!.getSavedGame(slot);
+    final snapshot =
+        storedSnapshot ??
+        await _readLegacySaveSnapshot(slot, migrateToStore: true);
+    if (snapshot == null) {
       throw ApiException('Save slot $slot does not exist.');
     }
 
-    final decoded = jsonDecode(stateFile.readAsStringSync());
-    final state = _asMap(decoded);
-    if (state == null) {
-      throw const ApiException('Save data is corrupted.');
-    }
+    final state = snapshot.state;
 
     final saveWorldFilename = state['worldpkgFilename'] as String?;
     if (saveWorldFilename != null &&
@@ -226,6 +234,74 @@ class LocalGameEngine {
       eventId: _currentEventId,
       turn: _turn,
     );
+  }
+
+  bool _shouldPreferLegacySave(SaveInfo legacy, SaveInfo? current) {
+    if (current == null) {
+      return true;
+    }
+
+    final legacyTime = DateTime.tryParse(legacy.saveTime);
+    final currentTime = DateTime.tryParse(current.saveTime);
+    if (legacyTime != null && currentTime != null) {
+      return legacyTime.isAfter(currentTime);
+    }
+    return legacy.saveTime.compareTo(current.saveTime) > 0;
+  }
+
+  Future<List<StoredSaveSnapshot>> _listLegacySaveSnapshots() async {
+    await _savesDir.create(recursive: true);
+    final snapshots = <StoredSaveSnapshot>[];
+
+    await for (final entity in _savesDir.list()) {
+      if (entity is! Directory ||
+          !p.basename(entity.path).startsWith('save_')) {
+        continue;
+      }
+
+      final snapshot = await _readLegacySnapshotFromDirectory(entity);
+      if (snapshot != null) {
+        snapshots.add(snapshot);
+      }
+    }
+
+    return snapshots;
+  }
+
+  Future<StoredSaveSnapshot?> _readLegacySaveSnapshot(
+    int slot, {
+    bool migrateToStore = false,
+  }) async {
+    final saveDir = Directory(
+      p.join(_savesDir.path, 'save_${slot.toString().padLeft(3, '0')}'),
+    );
+    final snapshot = await _readLegacySnapshotFromDirectory(saveDir);
+    if (snapshot != null && migrateToStore && store != null) {
+      await store!.saveGameSnapshot(info: snapshot.info, state: snapshot.state);
+    }
+    return snapshot;
+  }
+
+  Future<StoredSaveSnapshot?> _readLegacySnapshotFromDirectory(
+    Directory saveDir,
+  ) async {
+    if (!await saveDir.exists()) {
+      return null;
+    }
+
+    final metadataFile = File(p.join(saveDir.path, 'metadata.json'));
+    final stateFile = File(p.join(saveDir.path, 'state.json'));
+    if (!await metadataFile.exists() || !await stateFile.exists()) {
+      return null;
+    }
+
+    final metadata = _asMap(jsonDecode(await metadataFile.readAsString()));
+    final state = _asMap(jsonDecode(await stateFile.readAsString()));
+    if (metadata == null || state == null) {
+      return null;
+    }
+
+    return (info: SaveInfo.fromJson(metadata), state: state);
   }
 
   Stream<SseEvent> startGame({String lang = 'zh-CN'}) async* {

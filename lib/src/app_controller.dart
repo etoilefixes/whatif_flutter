@@ -35,8 +35,7 @@ class AppController extends ChangeNotifier {
   VoiceConfig voiceConfig = VoiceConfig.defaults();
 
   bool get isIntegratedMode => api.modeLabel == 'integrated-dart';
-  bool get hasModelProvider =>
-      modelProviders.any((p) => p.hasKey);
+  bool get hasModelProvider => modelProviders.any((p) => p.isUsable);
   bool get backendUrlManaged =>
       runtime.managesBackend || !api.supportsBaseUrlOverride;
   String get backendModeLabel =>
@@ -154,8 +153,9 @@ class AppController extends ChangeNotifier {
       } catch (_) {}
     }
 
-    readyState =
-        hasModelProvider ? AppReadyState.ready : AppReadyState.needsConfig;
+    readyState = hasModelProvider
+        ? AppReadyState.ready
+        : AppReadyState.needsConfig;
   }
 
   void openStart() {
@@ -266,7 +266,9 @@ class AppController extends ChangeNotifier {
     currentPkgName = pkg.name;
     currentPkgFilename = pkg.filename;
     await store.setLastPkg(LastPkg(filename: pkg.filename, name: pkg.name));
-    readyState = hasModelProvider ? AppReadyState.ready : AppReadyState.needsConfig;
+    readyState = hasModelProvider
+        ? AppReadyState.ready
+        : AppReadyState.needsConfig;
     page = AppPage.start;
     notifyListeners();
   }
@@ -313,6 +315,7 @@ class AppController extends ChangeNotifier {
   @override
   void dispose() {
     unawaited(runtime.stop());
+    unawaited(store.dispose());
     api.dispose();
     super.dispose();
   }

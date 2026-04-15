@@ -16,7 +16,7 @@ import 'src/services/config_store.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
-  final store = ConfigStore(prefs);
+  final store = await ConfigStore.open(legacyPrefs: prefs);
   final controller = AppController(
     store: store,
     api: await createBackendApi(store: store),

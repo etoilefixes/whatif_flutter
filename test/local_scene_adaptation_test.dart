@@ -14,7 +14,10 @@ void main() {
     () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final prefs = await SharedPreferences.getInstance();
-      final store = ConfigStore(prefs);
+      final store = await ConfigStore.open(
+        legacyPrefs: prefs,
+        useInMemoryDatabase: true,
+      );
       final planner = LocalSceneAdaptationPlanner(
         store: store,
         llmClient: IntegratedLlmClient(),
@@ -51,7 +54,10 @@ void main() {
 
       expect(result, isNotNull);
       expect(result!.adaptedPhaseSource, contains('altered reality'));
-      expect(result.adaptedPhaseSource, contains('council hall is already on fire'));
+      expect(
+        result.adaptedPhaseSource,
+        contains('council hall is already on fire'),
+      );
       expect(result.adaptationPlanText, contains('<adaptation_plan>'));
       expect(result.adaptationPlanText, contains('delta-001'));
       expect(result.adaptationPlanText, contains('Secure the council hall'));

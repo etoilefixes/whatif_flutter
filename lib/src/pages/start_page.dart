@@ -16,138 +16,203 @@ class StartPage extends StatelessWidget {
     final status = _StatusMeta.fromReadyState(controller.readyState, strings);
     final currentPkg = controller.currentPkgName;
 
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: Column(
-            children: [
-              Text(
-                strings.text('app.name'),
-                textAlign: TextAlign.center,
-                style: GoogleFonts.cinzel(
-                  fontSize: 52,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 5,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                strings.text('start.subtitle'),
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: const Color(0xFFC0CCE4),
-                ),
-              ),
-              const SizedBox(height: 28),
-              _GlassPanel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wideLayout = constraints.maxWidth >= 1080;
+
+        return Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: wideLayout ? 1180 : 520),
+              child: wideLayout
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          width: 11,
-                          height: 11,
-                          decoration: BoxDecoration(
-                            color: status.color,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: status.color.withValues(alpha: 0.5),
-                                blurRadius: 16,
-                              ),
-                            ],
+                        Expanded(
+                          flex: 6,
+                          child: _buildHeroPanel(
+                            context,
+                            status: status,
+                            currentPkg: currentPkg,
+                            wideLayout: true,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Text(
-                          status.label,
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(
-                                color: status.color,
-                                fontWeight: FontWeight.w700,
-                              ),
+                        const SizedBox(width: 24),
+                        SizedBox(
+                          width: 360,
+                          child: _buildActionPanel(
+                            context,
+                            wrappedInGlass: true,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        _buildHeroPanel(
+                          context,
+                          status: status,
+                          currentPkg: currentPkg,
+                          wideLayout: false,
+                        ),
+                        const SizedBox(height: 24),
+                        _buildActionPanel(context),
+                      ],
+                    ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHeroPanel(
+    BuildContext context, {
+    required _StatusMeta status,
+    required String? currentPkg,
+    required bool wideLayout,
+  }) {
+    return Column(
+      crossAxisAlignment: wideLayout
+          ? CrossAxisAlignment.start
+          : CrossAxisAlignment.center,
+      children: [
+        Text(
+          strings.text('app.name'),
+          textAlign: wideLayout ? TextAlign.left : TextAlign.center,
+          style: GoogleFonts.cinzel(
+            fontSize: wideLayout ? 64 : 52,
+            fontWeight: FontWeight.w700,
+            letterSpacing: wideLayout ? 6 : 5,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          strings.text('start.subtitle'),
+          textAlign: wideLayout ? TextAlign.left : TextAlign.center,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: const Color(0xFFC0CCE4),
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 28),
+        _GlassPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 11,
+                    height: 11,
+                    decoration: BoxDecoration(
+                      color: status.color,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: status.color.withValues(alpha: 0.5),
+                          blurRadius: 16,
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      currentPkg == null || currentPkg.isEmpty
-                          ? strings.text('start.noPkg')
-                          : strings.text('start.currentPkg', {
-                              'name': currentPkg,
-                            }),
-                      style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    status.label,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: status.color,
+                      fontWeight: FontWeight.w700,
                     ),
-                    if (controller.readyState == AppReadyState.offline) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        strings.text('start.backendOffline'),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: const Color(0xFFE7B07F),
-                        ),
-                      ),
-                    ],
-                    if (controller.runtimeError != null) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        controller.runtimeError!,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFFE8A9A0),
-                        ),
-                      ),
-                    ],
-                    if (controller.readyState == AppReadyState.needsConfig) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        strings.text('start.needsApiKey'),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: const Color(0xFFF1CC7A),
-                        ),
-                      ),
-                    ],
-                  ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                currentPkg == null || currentPkg.isEmpty
+                    ? strings.text('start.noPkg')
+                    : strings.text('start.currentPkg', {'name': currentPkg}),
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              if (controller.readyState == AppReadyState.offline) ...[
+                const SizedBox(height: 10),
+                Text(
+                  strings.text('start.backendOffline'),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFFE7B07F),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              _ActionButton(
-                icon: Icons.menu_book_rounded,
-                label: strings.text('start.selectPackage'),
-                onPressed: controller.openLibrary,
-              ),
-              const SizedBox(height: 14),
-              _ActionButton(
-                icon: Icons.auto_stories_rounded,
-                label: strings.text('start.startGame'),
-                enabled: controller.canStart,
-                onPressed: () => controller.openGameplay(),
-              ),
-              const SizedBox(height: 14),
-              _ActionButton(
-                icon: Icons.folder_open_rounded,
-                label: strings.text('start.loadSave'),
-                enabled: controller.backendReachable,
-                onPressed: () => _openLoadSaveDialog(context),
-              ),
-              const SizedBox(height: 14),
-              _ActionButton(
-                icon: Icons.tune_rounded,
-                label: strings.text('start.settings'),
-                onPressed: controller.openSettings,
-              ),
-              const SizedBox(height: 18),
-              TextButton.icon(
-                onPressed: controller.retryConnection,
-                icon: const Icon(Icons.refresh_rounded),
-                label: Text(strings.text('app.retry')),
-              ),
+              ],
+              if (controller.runtimeError != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  controller.runtimeError!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFFE8A9A0),
+                  ),
+                ),
+              ],
+              if (controller.readyState == AppReadyState.needsConfig) ...[
+                const SizedBox(height: 10),
+                Text(
+                  strings.text('start.needsApiKey'),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFFF1CC7A),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
-      ),
+      ],
     );
+  }
+
+  Widget _buildActionPanel(
+    BuildContext context, {
+    bool wrappedInGlass = false,
+  }) {
+    final content = Column(
+      children: [
+        _ActionButton(
+          icon: Icons.menu_book_rounded,
+          label: strings.text('start.selectPackage'),
+          onPressed: controller.openLibrary,
+        ),
+        const SizedBox(height: 14),
+        _ActionButton(
+          icon: Icons.auto_stories_rounded,
+          label: strings.text('start.startGame'),
+          enabled: controller.canStart,
+          onPressed: () => controller.openGameplay(),
+        ),
+        const SizedBox(height: 14),
+        _ActionButton(
+          icon: Icons.folder_open_rounded,
+          label: strings.text('start.loadSave'),
+          enabled: controller.backendReachable,
+          onPressed: () => _openLoadSaveDialog(context),
+        ),
+        const SizedBox(height: 14),
+        _ActionButton(
+          icon: Icons.tune_rounded,
+          label: strings.text('start.settings'),
+          onPressed: controller.openSettings,
+        ),
+        const SizedBox(height: 18),
+        TextButton.icon(
+          onPressed: controller.retryConnection,
+          icon: const Icon(Icons.refresh_rounded),
+          label: Text(strings.text('app.retry')),
+        ),
+      ],
+    );
+
+    if (!wrappedInGlass) {
+      return content;
+    }
+
+    return _GlassPanel(child: content);
   }
 
   Future<void> _openLoadSaveDialog(BuildContext context) async {

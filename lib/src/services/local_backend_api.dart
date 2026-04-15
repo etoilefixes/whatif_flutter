@@ -19,6 +19,7 @@ import 'local_tts_speaker.dart';
 import 'local_worldpkg.dart';
 import 'local_worldpkg_builder.dart';
 import 'local_worldpkg_extraction_enhancer.dart';
+import 'storage_backend.dart';
 
 class LocalBackendApi implements BackendApi {
   LocalBackendApi._({
@@ -40,6 +41,7 @@ class LocalBackendApi implements BackendApi {
   LocalTtsSpeaker get ttsSpeaker => _ttsSpeaker ??= LocalTtsSpeaker();
 
   final Map<String, LocalWorldPkg> _packages = <String, LocalWorldPkg>{};
+  final Map<String, WorldPkgInfo> _packageInfos = <String, WorldPkgInfo>{};
   LlmConfigMap? _defaultLlmConfig;
 
   static Future<LocalBackendApi> create({
@@ -78,6 +80,7 @@ class LocalBackendApi implements BackendApi {
     );
     final engine = LocalGameEngine(
       savesDir: resolvedPaths.savesDir,
+      store: store,
       narrativeGenerator: narrativeGenerator,
       deviationAgent: deviationAgent,
       memoryCompression: memoryCompression,
@@ -191,7 +194,7 @@ class LocalBackendApi implements BackendApi {
   @override
   Future<WorldPkgListResponse> getWorldPkgs() async {
     await _scanPackages();
-    final packages = _packages.values.map((pkg) => pkg.toInfo()).toList()
+    final packages = _packageInfos.values.toList()
       ..sort((left, right) => left.name.compareTo(right.name));
 
     return WorldPkgListResponse(
@@ -224,17 +227,24 @@ class LocalBackendApi implements BackendApi {
 
     await source.copy(target.path);
     _packages.remove(p.basename(target.path));
+    _packageInfos.remove(p.basename(target.path));
+    await _scanPackages();
   }
 
   @override
   Future<void> buildWorldPkgFromText(String filePath) async {
     final builtFile = await worldPkgBuilder.buildFromTextFile(filePath);
     _packages.remove(p.basename(builtFile.path));
+    _packageInfos.remove(p.basename(builtFile.path));
     await _scanPackages();
   }
 
   @override
   Future<Uint8List?> getWorldPkgCover(String filename) async {
+    final info = _packageInfos[filename];
+    if (info != null && !info.hasCover) {
+      return null;
+    }
     final pkg = await _ensurePackage(filename);
     return pkg.getCoverBytes();
   }
@@ -327,7 +337,14 @@ class LocalBackendApi implements BackendApi {
 
   Future<void> _scanPackages() async {
     await paths.outputDir.create(recursive: true);
-    final nextPackages = <String, LocalWorldPkg>{};
+    final cachedRecords = <String, PersistedPackageRecord>{
+      for (final record in await store.listPackageRecords())
+        record.filename: record,
+    };
+    final nextPackageInfos = <String, WorldPkgInfo>{};
+    final validFilenames = <String>{};
+    final changedFilenames = <String>{};
+    final indexedAtMs = DateTime.now().millisecondsSinceEpoch;
 
     await for (final entity in paths.outputDir.list()) {
       if (entity is! File ||
@@ -335,15 +352,44 @@ class LocalBackendApi implements BackendApi {
         continue;
       }
 
+      final filename = p.basename(entity.path);
       try {
-        final pkg = LocalWorldPkg.load(entity);
-        nextPackages[p.basename(entity.path)] = pkg;
+        final stat = await entity.stat();
+        final modifiedAtMs = stat.modified.millisecondsSinceEpoch;
+        final cached = cachedRecords[filename];
+        if (cached != null &&
+            cached.modifiedAtMs == modifiedAtMs &&
+            cached.size == stat.size) {
+          validFilenames.add(filename);
+          nextPackageInfos[filename] = cached.toWorldPkgInfo();
+          continue;
+        }
+
+        final inspected = LocalWorldPkg.inspect(entity);
+        final record = PersistedPackageRecord(
+          filename: filename,
+          title: inspected.title,
+          size: stat.size,
+          hasCover: inspected.hasCover,
+          modifiedAtMs: modifiedAtMs,
+          indexedAtMs: indexedAtMs,
+        );
+        await store.upsertPackageRecord(record);
+        validFilenames.add(filename);
+        changedFilenames.add(filename);
+        nextPackageInfos[filename] = record.toWorldPkgInfo();
       } catch (_) {}
     }
 
-    _packages
+    await store.prunePackageRecords(validFilenames);
+    _packages.removeWhere(
+      (filename, _) =>
+          !validFilenames.contains(filename) ||
+          changedFilenames.contains(filename),
+    );
+    _packageInfos
       ..clear()
-      ..addAll(nextPackages);
+      ..addAll(nextPackageInfos);
   }
 
   Future<LocalWorldPkg> _ensurePackage(String filename) async {

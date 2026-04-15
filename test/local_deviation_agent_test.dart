@@ -13,7 +13,10 @@ void main() {
     () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final prefs = await SharedPreferences.getInstance();
-      final store = ConfigStore(prefs);
+      final store = await ConfigStore.open(
+        legacyPrefs: prefs,
+        useInMemoryDatabase: true,
+      );
       final llmClient = IntegratedLlmClient();
       addTearDown(llmClient.dispose);
 
