@@ -1,8 +1,26 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
 import '../l10n/app_strings.dart';
 import '../models.dart';
+import 'provider_list_page.dart';
+
+// 深色主题配色
+class _DarkTheme {
+  static const Color background = Color(0xFF0D1117);
+  static const Color card = Color(0xFF161B22);
+  static const Color border = Color(0xFF30363D);
+  static const Color primary = Color(0xFFD6922F);
+  static const Color textPrimary = Color(0xFFE6EDF3);
+  static const Color textSecondary = Color(0xFF8B949E);
+  static const Color textMuted = Color(0xFF6E7681);
+  static const Color selectedBg = Color(0xFF21262D);
+  static const Color errorBg = Color(0x33DA3633);
+  static const double radius = 8;
+  static const double radiusLg = 12;
+}
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -21,16 +39,11 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _backendUrlController;
   final List<_ProviderEditor> _providerEditors = [];
-  final Map<String, TextEditingController> _modelControllers = {};
-  final Map<String, TextEditingController> _temperatureControllers = {};
-  final Map<String, TextEditingController> _budgetControllers = {};
 
-  LlmConfigMap? _localConfig;
   late VoiceConfig _voiceDraft;
   List<VoiceInfo> _voices = const <VoiceInfo>[];
 
   bool _savingProviders = false;
-  bool _savingConfig = false;
   bool _savingVoice = false;
   bool _loadingVoices = false;
   String? _testingProviderName;
@@ -48,26 +61,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _providerEditors.add(_ProviderEditor.fromProvider(provider));
     }
 
-    _bootstrapConfig();
     _loadVoices();
-  }
-
-  Future<void> _bootstrapConfig() async {
-    if (widget.controller.llmConfig == null) {
-      await widget.controller.ensureLlmConfigLoaded();
-    }
-    if (!mounted) {
-      return;
-    }
-
-    final config = widget.controller.llmConfig;
-    if (config != null) {
-      _populateConfigControllers(config);
-    } else {
-      setState(() {
-        _localConfig = null;
-      });
-    }
   }
 
   Future<void> _loadVoices() async {
@@ -117,40 +111,13 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  void _populateConfigControllers(LlmConfigMap config) {
-    _disposeConfigControllers();
-
-    void addSection(String section, Map<String, LlmSlotConfig> slots) {
-      slots.forEach((name, slot) {
-        final key = '$section::$name';
-        _modelControllers[key] = TextEditingController(text: slot.model);
-        _temperatureControllers[key] = TextEditingController(
-          text: slot.temperature.toString(),
-        );
-        _budgetControllers[key] = TextEditingController(
-          text: slot.thinkingBudget.toString(),
-        );
-      });
-    }
-
-    addSection('extractors', config.extractors);
-    addSection('agents', config.agents);
-
-    setState(() {
-      _localConfig = config;
-    });
-  }
-
   // ── Provider Actions ─────────────────────────────────────────────
 
   void _addProvider() {
     setState(() {
-      _providerEditors.add(_ProviderEditor(
-        name: '',
-        apiKey: '',
-        apiUrl: '',
-        modelsText: '',
-      ));
+      _providerEditors.add(
+        _ProviderEditor(name: '', apiKey: '', apiUrl: '', modelsText: ''),
+      );
     });
   }
 
@@ -167,21 +134,24 @@ class _SettingsPageState extends State<SettingsPage> {
     });
 
     try {
-      final providers = _providerEditors.map((e) {
-        final models = e.modelsText
-            .split('\n')
-            .map((s) => s.trim())
-            .where((s) => s.isNotEmpty)
-            .toList();
-        return ModelProvider(
-          name: e.nameController.text.trim(),
-          apiKey: e.apiKeyController.text.trim(),
-          apiUrl: e.apiUrlController.text.trim().isEmpty
-              ? null
-              : e.apiUrlController.text.trim(),
-          models: models,
-        );
-      }).where((p) => p.name.isNotEmpty).toList();
+      final providers = _providerEditors
+          .map((e) {
+            final models = e.modelsText
+                .split('\n')
+                .map((s) => s.trim())
+                .where((s) => s.isNotEmpty)
+                .toList();
+            return ModelProvider(
+              name: e.nameController.text.trim(),
+              apiKey: e.apiKeyController.text.trim(),
+              apiUrl: e.apiUrlController.text.trim().isEmpty
+                  ? null
+                  : e.apiUrlController.text.trim(),
+              models: models,
+            );
+          })
+          .where((p) => p.name.isNotEmpty)
+          .toList();
 
       if (!widget.controller.backendUrlManaged) {
         await widget.controller.updateBackendUrl(
@@ -198,16 +168,26 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(widget.strings.text('settings.connectionSaved')),
+          content: Text(
+            widget.strings.text('settings.connectionSaved'),
+            style: const TextStyle(color: _DarkTheme.textPrimary),
+          ),
+          backgroundColor: _DarkTheme.card,
         ),
       );
     } catch (error) {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.toString(),
+            style: const TextStyle(color: _DarkTheme.textPrimary),
+          ),
+          backgroundColor: _DarkTheme.card,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -248,55 +228,31 @@ class _SettingsPageState extends State<SettingsPage> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.strings.text('settings.testSuccess'))),
+        SnackBar(
+          content: Text(
+            widget.strings.text('settings.testSuccess'),
+            style: const TextStyle(color: _DarkTheme.textPrimary),
+          ),
+          backgroundColor: _DarkTheme.card,
+        ),
       );
     } catch (_) {
       if (!mounted) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.strings.text('settings.testFailed'))),
+        SnackBar(
+          content: Text(
+            widget.strings.text('settings.testFailed'),
+            style: const TextStyle(color: _DarkTheme.textPrimary),
+          ),
+          backgroundColor: _DarkTheme.card,
+        ),
       );
     } finally {
       if (mounted) {
         setState(() {
           _testingProviderName = null;
-        });
-      }
-    }
-  }
-
-  // ── Config Actions ───────────────────────────────────────────────
-
-  Future<void> _saveConfig() async {
-    if (_localConfig == null) {
-      return;
-    }
-
-    setState(() {
-      _savingConfig = true;
-    });
-
-    try {
-      final config = _buildConfigFromControllers(_localConfig!);
-      await widget.controller.saveLlmConfig(config);
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.strings.text('settings.saved'))),
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
-    } finally {
-      if (mounted) {
-        setState(() {
-          _savingConfig = false;
         });
       }
     }
@@ -313,15 +269,27 @@ class _SettingsPageState extends State<SettingsPage> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.strings.text('settings.saved'))),
+        SnackBar(
+          content: Text(
+            widget.strings.text('settings.saved'),
+            style: const TextStyle(color: _DarkTheme.textPrimary),
+          ),
+          backgroundColor: _DarkTheme.card,
+        ),
       );
     } catch (error) {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.toString(),
+            style: const TextStyle(color: _DarkTheme.textPrimary),
+          ),
+          backgroundColor: _DarkTheme.card,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -340,73 +308,12 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {});
   }
 
-  void _applyPreset(String model) {
-    if (_localConfig == null) {
-      return;
-    }
-
-    void updateSection(String section, Map<String, LlmSlotConfig> slots) {
-      slots.forEach((name, _) {
-        final key = '$section::$name';
-        _modelControllers[key]!.text = model;
-      });
-    }
-
-    updateSection('extractors', _localConfig!.extractors);
-    updateSection('agents', _localConfig!.agents);
-
-    setState(() {});
-  }
-
-  LlmConfigMap _buildConfigFromControllers(LlmConfigMap source) {
-    Map<String, LlmSlotConfig> buildSection(
-      String section,
-      Map<String, LlmSlotConfig> slots,
-    ) {
-      final next = <String, LlmSlotConfig>{};
-      slots.forEach((name, slot) {
-        final key = '$section::$name';
-        next[name] = slot.copyWith(
-          model: _modelControllers[key]!.text.trim(),
-          temperature:
-              double.tryParse(_temperatureControllers[key]!.text.trim()) ??
-              slot.temperature,
-          thinkingBudget:
-              int.tryParse(_budgetControllers[key]!.text.trim()) ??
-              slot.thinkingBudget,
-        );
-      });
-      return next;
-    }
-
-    return LlmConfigMap(
-      extractors: buildSection('extractors', source.extractors),
-      agents: buildSection('agents', source.agents),
-    );
-  }
-
-  void _disposeConfigControllers() {
-    for (final controller in _modelControllers.values) {
-      controller.dispose();
-    }
-    for (final controller in _temperatureControllers.values) {
-      controller.dispose();
-    }
-    for (final controller in _budgetControllers.values) {
-      controller.dispose();
-    }
-    _modelControllers.clear();
-    _temperatureControllers.clear();
-    _budgetControllers.clear();
-  }
-
   @override
   void dispose() {
     _backendUrlController.dispose();
     for (final editor in _providerEditors) {
       editor.dispose();
     }
-    _disposeConfigControllers();
     super.dispose();
   }
 
@@ -415,55 +322,81 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
-            child: Row(
-              children: [
-                IconButton.filledTonal(
-                  onPressed: widget.controller.openStart,
-                  icon: const Icon(Icons.arrow_back_rounded),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    widget.strings.text('settings.title'),
-                    style: Theme.of(context).textTheme.headlineSmall,
+      length: 3,
+      child: Container(
+        color: _DarkTheme.background,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+              child: Row(
+                children: [
+                  IconButton.filledTonal(
+                    onPressed: widget.controller.openStart,
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    style: IconButton.styleFrom(
+                      backgroundColor: _DarkTheme.card,
+                      foregroundColor: _DarkTheme.textPrimary,
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      widget.strings.text('settings.title'),
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: _DarkTheme.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: TabBar(
-              isScrollable: true,
-              tabs: [
-                Tab(text: widget.strings.text('settings.tabProviders')),
-                Tab(text: widget.strings.text('settings.tabModels')),
-                Tab(text: widget.strings.text('settings.tabVoice')),
-                Tab(text: widget.strings.text('settings.tabLanguage')),
-              ],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: TabBar(
+                isScrollable: true,
+                labelColor: _DarkTheme.primary,
+                unselectedLabelColor: _DarkTheme.textSecondary,
+                indicatorColor: _DarkTheme.primary,
+                tabs: [
+                  Tab(text: widget.strings.text('settings.tabProviders')),
+                  Tab(text: widget.strings.text('settings.tabVoice')),
+                  Tab(text: widget.strings.text('settings.tabLanguage')),
+                ],
+              ),
             ),
-          ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                _buildProvidersTab(),
-                _buildModelConfigTab(),
-                _buildVoiceTab(),
-                _buildLanguageTab(),
-              ],
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _buildProvidersTab(),
+                  _buildVoiceTab(),
+                  _buildLanguageTab(),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   // ── Providers Tab ────────────────────────────────────────────────
+
+  Future<void> _navigateToProviderList() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ProviderListPage(
+          controller: widget.controller,
+          strings: widget.strings,
+        ),
+      ),
+    );
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   Widget _buildProvidersTab() {
     return ListView(
@@ -477,25 +410,29 @@ class _SettingsPageState extends State<SettingsPage> {
               TextField(
                 controller: _backendUrlController,
                 readOnly: widget.controller.backendUrlManaged,
+                style: const TextStyle(color: _DarkTheme.textPrimary),
                 decoration: InputDecoration(
                   hintText: widget.controller.backendUrlManaged
                       ? 'Managed by the desktop runtime'
                       : widget.strings.text('settings.backendUrlHint'),
+                  hintStyle: const TextStyle(color: _DarkTheme.textMuted),
                 ),
               ),
               if (widget.controller.backendUrlManaged) ...[
                 const SizedBox(height: 10),
                 Text(
                   'The Flutter desktop app starts and owns the backend process automatically.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFFA7B5CC),
+                  style: TextStyle(
+                    color: _DarkTheme.textSecondary.withOpacity(0.7),
+                    fontSize: 12,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   'Mode: ${widget.controller.backendModeLabel}',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF94A2BD),
+                  style: TextStyle(
+                    color: _DarkTheme.textSecondary.withOpacity(0.7),
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -505,42 +442,98 @@ class _SettingsPageState extends State<SettingsPage> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    color: const Color(0x33C96B54),
+                    borderRadius: BorderRadius.circular(_DarkTheme.radius),
+                    color: _DarkTheme.errorBg,
+                    border: Border.all(color: const Color(0x55DA3633)),
                   ),
-                  child: Text(widget.controller.runtimeError!),
+                  child: Text(
+                    widget.controller.runtimeError!,
+                    style: const TextStyle(color: _DarkTheme.textPrimary),
+                  ),
                 ),
               ],
             ],
           ),
         ),
         const SizedBox(height: 16),
-        for (var i = 0; i < _providerEditors.length; i++) ...[
-          _buildProviderCard(i),
-          const SizedBox(height: 12),
-        ],
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _addProvider,
-            icon: const Icon(Icons.add_rounded),
-            label: Text(widget.strings.text('settings.addProvider')),
+        _SectionCard(
+          title: widget.strings.text('settings.apiKeys'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${widget.controller.modelProviders.length} ${widget.strings.text('provider.modelsCount')}',
+                style: const TextStyle(
+                  color: _DarkTheme.textSecondary,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _navigateToProviderList,
+                  icon: const Icon(Icons.manage_accounts_rounded),
+                  label: Text(widget.strings.text('provider.listTitle')),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _DarkTheme.primary,
+                    foregroundColor: _DarkTheme.background,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: _savingProviders ? null : _saveProviders,
-            child: _savingProviders
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(widget.strings.text('settings.save')),
+        _buildDataManagementSection(),
+        if (_providerEditors.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Legacy Configuration',
+            style: TextStyle(
+              color: _DarkTheme.textMuted.withOpacity(0.7),
+              fontSize: 12,
+            ),
           ),
-        ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < _providerEditors.length; i++) ...[
+            _buildProviderCard(i),
+            const SizedBox(height: 12),
+          ],
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _addProvider,
+              icon: const Icon(Icons.add_rounded),
+              label: Text(widget.strings.text('settings.addProvider')),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _DarkTheme.textSecondary,
+                side: const BorderSide(color: _DarkTheme.border),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _savingProviders ? null : _saveProviders,
+              style: FilledButton.styleFrom(
+                backgroundColor: _DarkTheme.primary,
+                foregroundColor: _DarkTheme.background,
+              ),
+              child: _savingProviders
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _DarkTheme.background,
+                      ),
+                    )
+                  : Text(widget.strings.text('settings.save')),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -559,39 +552,50 @@ class _SettingsPageState extends State<SettingsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextField(
+          _buildTextField(
             controller: editor.nameController,
-            decoration: InputDecoration(
-              labelText: widget.strings.text('settings.providerName'),
-              hintText: widget.strings.text('settings.providerNameHint'),
-            ),
+            label: widget.strings.text('settings.providerName'),
+            hint: widget.strings.text('settings.providerNameHint'),
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 10),
-          TextField(
+          _buildTextField(
             controller: editor.apiKeyController,
-            obscureText: true,
-            decoration: InputDecoration(
-              labelText: widget.strings.text('settings.apiKey'),
-              hintText: 'sk-...',
-            ),
+            label: widget.strings.text('settings.apiKey'),
+            hint: 'sk-...',
+            obscure: true,
           ),
           const SizedBox(height: 10),
-          TextField(
+          _buildTextField(
             controller: editor.apiUrlController,
-            decoration: InputDecoration(
-              labelText: widget.strings.text('settings.apiUrl'),
-              hintText: widget.strings.text('settings.apiUrlHint'),
-            ),
+            label: widget.strings.text('settings.apiUrl'),
+            hint: widget.strings.text('settings.apiUrlHint'),
           ),
           const SizedBox(height: 10),
           TextField(
             controller: editor.modelsController,
             maxLines: 3,
             minLines: 1,
+            style: const TextStyle(color: _DarkTheme.textPrimary),
             decoration: InputDecoration(
               labelText: widget.strings.text('settings.models'),
+              labelStyle: const TextStyle(color: _DarkTheme.textSecondary),
               hintText: widget.strings.text('settings.modelsHint'),
+              hintStyle: const TextStyle(color: _DarkTheme.textMuted),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(_DarkTheme.radius),
+                borderSide: const BorderSide(color: _DarkTheme.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(_DarkTheme.radius),
+                borderSide: const BorderSide(color: _DarkTheme.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(_DarkTheme.radius),
+                borderSide: const BorderSide(color: _DarkTheme.primary),
+              ),
+              filled: true,
+              fillColor: _DarkTheme.background,
             ),
           ),
           const SizedBox(height: 12),
@@ -603,12 +607,18 @@ class _SettingsPageState extends State<SettingsPage> {
                         _testingProviderName != null
                     ? null
                     : () => _testProvider(editor),
-                child: _testingProviderName ==
-                        editor.nameController.text.trim()
+                style: FilledButton.styleFrom(
+                  backgroundColor: _DarkTheme.selectedBg,
+                  foregroundColor: _DarkTheme.textPrimary,
+                ),
+                child: _testingProviderName == editor.nameController.text.trim()
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _DarkTheme.textSecondary,
+                        ),
                       )
                     : Text(widget.strings.text('settings.test')),
               ),
@@ -617,6 +627,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 onPressed: () => _removeProvider(index),
                 icon: const Icon(Icons.delete_outline_rounded),
                 tooltip: widget.strings.text('settings.removeProvider'),
+                style: IconButton.styleFrom(
+                  foregroundColor: _DarkTheme.textSecondary,
+                  side: const BorderSide(color: _DarkTheme.border),
+                ),
               ),
             ],
           ),
@@ -625,57 +639,38 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  // ── Model Config Tab ─────────────────────────────────────────────
-
-  Widget _buildModelConfigTab() {
-    if (_localConfig == null) {
-      return Center(child: Text(widget.strings.text('settings.noModelConfig')));
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            FilledButton.tonal(
-              onPressed: () => _applyPreset('dashscope/qwen3.5-flash'),
-              child: Text(widget.strings.text('settings.presetFlash')),
-            ),
-            FilledButton.tonal(
-              onPressed: () => _applyPreset('dashscope/qwen3.5-plus'),
-              child: Text(widget.strings.text('settings.presetPlus')),
-            ),
-          ],
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    bool obscure = false,
+    ValueChanged<String>? onChanged,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      onChanged: onChanged,
+      style: const TextStyle(color: _DarkTheme.textPrimary),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: _DarkTheme.textSecondary),
+        hintText: hint,
+        hintStyle: const TextStyle(color: _DarkTheme.textMuted),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(_DarkTheme.radius),
+          borderSide: const BorderSide(color: _DarkTheme.border),
         ),
-        const SizedBox(height: 16),
-        _buildConfigSection(
-          title: widget.strings.text('settings.extractors'),
-          section: 'extractors',
-          slots: _localConfig!.extractors,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(_DarkTheme.radius),
+          borderSide: const BorderSide(color: _DarkTheme.border),
         ),
-        const SizedBox(height: 16),
-        _buildConfigSection(
-          title: widget.strings.text('settings.agents'),
-          section: 'agents',
-          slots: _localConfig!.agents,
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(_DarkTheme.radius),
+          borderSide: const BorderSide(color: _DarkTheme.primary),
         ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: _savingConfig ? null : _saveConfig,
-            child: _savingConfig
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(widget.strings.text('settings.save')),
-          ),
-        ),
-      ],
+        filled: true,
+        fillColor: _DarkTheme.background,
+      ),
     );
   }
 
@@ -706,8 +701,15 @@ class _SettingsPageState extends State<SettingsPage> {
                     _voiceDraft = _voiceDraft.copyWith(enabled: value);
                   });
                 },
-                title: Text(widget.strings.text('settings.voiceEnable')),
-                subtitle: Text(widget.strings.text('settings.voiceHint')),
+                title: Text(
+                  widget.strings.text('settings.voiceEnable'),
+                  style: const TextStyle(color: _DarkTheme.textPrimary),
+                ),
+                subtitle: Text(
+                  widget.strings.text('settings.voiceHint'),
+                  style: const TextStyle(color: _DarkTheme.textSecondary),
+                ),
+                activeColor: _DarkTheme.primary,
               ),
               const SizedBox(height: 8),
               Row(
@@ -715,6 +717,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   Expanded(
                     child: DropdownButtonFormField<String>(
                       initialValue: selectedVoice,
+                      dropdownColor: _DarkTheme.card,
+                      style: const TextStyle(color: _DarkTheme.textPrimary),
                       items: [
                         for (final voice in items)
                           DropdownMenuItem<String>(
@@ -724,6 +728,9 @@ class _SettingsPageState extends State<SettingsPage> {
                                   ? voice.name
                                   : voice.friendlyName,
                               overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _DarkTheme.textPrimary,
+                              ),
                             ),
                           ),
                       ],
@@ -741,20 +748,57 @@ class _SettingsPageState extends State<SettingsPage> {
                             },
                       decoration: InputDecoration(
                         labelText: widget.strings.text('settings.voiceLabel'),
+                        labelStyle: const TextStyle(
+                          color: _DarkTheme.textSecondary,
+                        ),
                         hintText: _loadingVoices
                             ? widget.strings.text('settings.voiceLoading')
                             : widget.strings.text('settings.voiceUnavailable'),
+                        hintStyle: const TextStyle(color: _DarkTheme.textMuted),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(
+                            _DarkTheme.radius,
+                          ),
+                          borderSide: const BorderSide(
+                            color: _DarkTheme.border,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(
+                            _DarkTheme.radius,
+                          ),
+                          borderSide: const BorderSide(
+                            color: _DarkTheme.border,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(
+                            _DarkTheme.radius,
+                          ),
+                          borderSide: const BorderSide(
+                            color: _DarkTheme.primary,
+                          ),
+                        ),
+                        filled: true,
+                        fillColor: _DarkTheme.background,
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   FilledButton.tonal(
                     onPressed: _loadingVoices ? null : _loadVoices,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _DarkTheme.selectedBg,
+                      foregroundColor: _DarkTheme.textPrimary,
+                    ),
                     child: _loadingVoices
                         ? const SizedBox(
                             width: 16,
                             height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: _DarkTheme.textSecondary,
+                            ),
                           )
                         : Text(widget.strings.text('settings.voiceRefresh')),
                   ),
@@ -766,10 +810,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    color: const Color(0x33C96B54),
+                    borderRadius: BorderRadius.circular(_DarkTheme.radius),
+                    color: _DarkTheme.errorBg,
+                    border: Border.all(color: const Color(0x55DA3633)),
                   ),
-                  child: Text(_voiceError!),
+                  child: Text(
+                    _voiceError!,
+                    style: const TextStyle(color: _DarkTheme.textPrimary),
+                  ),
                 ),
               ],
               const SizedBox(height: 16),
@@ -777,11 +825,18 @@ class _SettingsPageState extends State<SettingsPage> {
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: _savingVoice ? null : _saveVoiceConfig,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _DarkTheme.primary,
+                    foregroundColor: _DarkTheme.background,
+                  ),
                   child: _savingVoice
                       ? const SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: _DarkTheme.background,
+                          ),
                         )
                       : Text(widget.strings.text('settings.save')),
                 ),
@@ -793,66 +848,244 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _buildConfigSection({
-    required String title,
-    required String section,
-    required Map<String, LlmSlotConfig> slots,
-  }) {
+  // ── Data Management ───────────────────────────────────────────────
+
+  Widget _buildDataManagementSection() {
     return _SectionCard(
-      title: title,
+      title: '数据管理',
       child: Column(
-        children: slots.entries.map((entry) {
-          final slotKey = '$section::${entry.key}';
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 14),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '备份和恢复您的设置数据',
+            style: TextStyle(color: _DarkTheme.textSecondary, fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _exportConfig,
+                  icon: const Icon(Icons.file_upload_outlined, size: 18),
+                  label: const Text('导出配置'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _DarkTheme.textSecondary,
+                    side: const BorderSide(color: _DarkTheme.border),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _importConfig,
+                  icon: const Icon(Icons.file_download_outlined, size: 18),
+                  label: const Text('导入配置'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _DarkTheme.textSecondary,
+                    side: const BorderSide(color: _DarkTheme.border),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _clearAllData,
+            icon: const Icon(Icons.delete_forever_outlined, size: 18),
+            label: const Text('清除所有数据'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFFF7B72),
+              side: const BorderSide(color: const Color(0x55DA3633)),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(_DarkTheme.radius),
+              color: _DarkTheme.background,
+              border: Border.all(color: _DarkTheme.border),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.strings.slotLabel(entry.key),
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  '存储状态',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _DarkTheme.textSecondary,
+                  ),
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _modelControllers[slotKey],
-                  decoration: const InputDecoration(labelText: 'Model'),
+                const SizedBox(height: 8),
+                _buildStorageInfoRow(
+                  '模型商数量',
+                  '${widget.controller.modelProviders.length}',
                 ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _temperatureControllers[slotKey],
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: widget.strings.text(
-                            'settings.temperature',
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _budgetControllers[slotKey],
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: widget.strings.text(
-                            'settings.thinkingBudget',
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                _buildStorageInfoRow('语言设置', widget.controller.locale),
+                _buildStorageInfoRow(
+                  '语音状态',
+                  widget.controller.voiceConfig.enabled ? '已启用' : '已禁用',
                 ),
               ],
             ),
-          );
-        }).toList(),
+          ),
+        ],
       ),
     );
+  }
+
+  Widget _buildStorageInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(fontSize: 12, color: _DarkTheme.textMuted),
+          ),
+          Text(
+            value,
+            style: TextStyle(fontSize: 12, color: _DarkTheme.textPrimary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportConfig() async {
+    try {
+      final config = <String, dynamic>{
+        'modelProviders': widget.controller.modelProviders
+            .map((p) => p.toJson())
+            .toList(),
+        'locale': widget.controller.locale,
+        'voiceConfig': widget.controller.voiceConfig.toJson(),
+        'exportTime': DateTime.now().toIso8601String(),
+        'version': '1.0',
+      };
+
+      final jsonString = const JsonEncoder.withIndent('  ').convert(config);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              '配置已复制到剪贴板',
+              style: TextStyle(color: _DarkTheme.textPrimary),
+            ),
+            backgroundColor: _DarkTheme.card,
+            action: SnackBarAction(
+              label: '复制',
+              textColor: _DarkTheme.primary,
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '导出失败: $e',
+              style: const TextStyle(color: _DarkTheme.textPrimary),
+            ),
+            backgroundColor: _DarkTheme.card,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _importConfig() async {
+    // TODO: 实现从文件或剪贴板导入配置
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            '导入功能开发中...',
+            style: TextStyle(color: _DarkTheme.textPrimary),
+          ),
+          backgroundColor: _DarkTheme.card,
+        ),
+      );
+    }
+  }
+
+  Future<void> _clearAllData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _DarkTheme.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_DarkTheme.radiusLg),
+          side: const BorderSide(color: _DarkTheme.border),
+        ),
+        title: const Text(
+          '确认清除所有数据？',
+          style: TextStyle(color: _DarkTheme.textPrimary),
+        ),
+        content: const Text(
+          '这将删除所有模型商配置、语言设置等数据。此操作不可撤销。',
+          style: TextStyle(color: _DarkTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            style: TextButton.styleFrom(
+              foregroundColor: _DarkTheme.textSecondary,
+            ),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFDA3633),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('确认删除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await widget.controller.saveModelProviders([]);
+        setState(() {
+          _providerEditors.clear();
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                '所有数据已清除',
+                style: TextStyle(color: _DarkTheme.textPrimary),
+              ),
+              backgroundColor: _DarkTheme.card,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '清除失败: $e',
+                style: const TextStyle(color: _DarkTheme.textPrimary),
+              ),
+              backgroundColor: _DarkTheme.card,
+            ),
+          );
+        }
+      }
+    }
   }
 
   // ── Language Tab ─────────────────────────────────────────────────
@@ -885,10 +1118,10 @@ class _ProviderEditor {
     required String apiKey,
     required String apiUrl,
     required String modelsText,
-  })  : nameController = TextEditingController(text: name),
-        apiKeyController = TextEditingController(text: apiKey),
-        apiUrlController = TextEditingController(text: apiUrl),
-        modelsController = TextEditingController(text: modelsText);
+  }) : nameController = TextEditingController(text: name),
+       apiKeyController = TextEditingController(text: apiKey),
+       apiUrlController = TextEditingController(text: apiUrl),
+       modelsController = TextEditingController(text: modelsText);
 
   factory _ProviderEditor.fromProvider(ModelProvider provider) {
     return _ProviderEditor(
@@ -927,18 +1160,20 @@ class _SectionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0x223A4A68)),
-        color: const Color(0xCC101A2B),
+        borderRadius: BorderRadius.circular(_DarkTheme.radiusLg),
+        border: Border.all(color: _DarkTheme.border),
+        color: _DarkTheme.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: _DarkTheme.textPrimary,
+            ),
           ),
           const SizedBox(height: 14),
           child,
@@ -963,26 +1198,29 @@ class _LanguageTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(_DarkTheme.radiusLg),
       child: Ink(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(_DarkTheme.radiusLg),
           border: Border.all(
-            color: selected ? const Color(0x88D6922F) : const Color(0x223A4A68),
+            color: selected ? _DarkTheme.primary : _DarkTheme.border,
           ),
-          color: const Color(0xCC101A2B),
+          color: selected ? _DarkTheme.selectedBg : _DarkTheme.card,
         ),
         child: Row(
           children: [
             Expanded(
               child: Text(
                 title,
-                style: Theme.of(context).textTheme.titleMedium,
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: _DarkTheme.textPrimary,
+                ),
               ),
             ),
             if (selected)
-              const Icon(Icons.check_circle_rounded, color: Color(0xFFD6922F)),
+              const Icon(Icons.check_circle_rounded, color: _DarkTheme.primary),
           ],
         ),
       ),

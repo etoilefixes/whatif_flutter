@@ -59,7 +59,7 @@ class ApiClient implements BackendApi {
     // Convert to the legacy format that the Python backend understands
     final keys = <String, String>{};
     for (final provider in providers) {
-      if (provider.hasKey) {
+      if (provider.isUsable) {
         keys[provider.name] = provider.apiKey;
       }
     }

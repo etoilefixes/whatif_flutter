@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../models.dart';
 import 'backend_api_contract.dart';
+import 'provider_api_utils.dart';
 
 class IntegratedLlmClient {
   IntegratedLlmClient({http.Client? client})
@@ -29,7 +30,7 @@ class IntegratedLlmClient {
 
   bool supportsProvider(String provider, {String? apiBase}) {
     return (apiBase != null && apiBase.trim().isNotEmpty) ||
-        _defaultBaseUrls.containsKey(provider);
+        _defaultBaseUrls.containsKey(provider.toLowerCase());
   }
 
   Future<void> testProvider(
@@ -47,7 +48,8 @@ class IntegratedLlmClient {
     await completeChat(
       provider: provider,
       apiKey: apiKey,
-      model: model ?? _defaultTestModels[provider] ?? 'gpt-4o-mini',
+      model:
+          model ?? _defaultTestModels[provider.toLowerCase()] ?? 'gpt-4o-mini',
       temperature: 0,
       apiBase: apiBase,
       messages: const <Map<String, String>>[
@@ -63,10 +65,10 @@ class IntegratedLlmClient {
   Future<void> testModelProvider(ModelProvider provider) async {
     final apiBase = provider.apiUrl?.trim().isNotEmpty == true
         ? provider.apiUrl!.trim()
-        : _defaultBaseUrls[provider.name];
+        : _defaultBaseUrls[provider.name.toLowerCase()];
     final model = provider.models.isNotEmpty
         ? provider.models.first
-        : _defaultTestModels[provider.name] ?? 'gpt-4o-mini';
+        : _defaultTestModels[provider.name.toLowerCase()] ?? 'gpt-4o-mini';
     await testProvider(
       provider.name,
       provider.apiKey,
@@ -84,10 +86,9 @@ class IntegratedLlmClient {
     String? apiBase,
     Map<String, dynamic> extraParams = const <String, dynamic>{},
   }) async {
-    final endpointBase = _normalizeBaseUrl(
-      apiBase?.trim().isNotEmpty == true
-          ? apiBase!.trim()
-          : _defaultBaseUrls[provider],
+    final endpointBase = resolveProviderApiBase(
+      provider: provider,
+      customApiUrl: apiBase,
     );
     if (endpointBase == null) {
       throw ApiException(
@@ -105,10 +106,7 @@ class IntegratedLlmClient {
 
     final response = await _client.post(
       uri,
-      headers: <String, String>{
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $apiKey',
-      },
+      headers: buildProviderHeaders(provider: provider, apiKey: apiKey),
       body: jsonEncode(body),
     );
 
@@ -144,13 +142,6 @@ class IntegratedLlmClient {
     }
 
     return _messageContent(message);
-  }
-
-  String? _normalizeBaseUrl(String? value) {
-    if (value == null || value.isEmpty) {
-      return null;
-    }
-    return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
   }
 
   String _stripProviderPrefix(String model) {

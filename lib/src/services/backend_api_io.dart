@@ -10,7 +10,8 @@ Future<BackendApi> createBackendApi({required ConfigStore store}) async {
       ?.trim()
       .toLowerCase();
 
-  if (mode == 'integrated' || mode == 'local') {
+  // 默认使用集成模式，除非显式设置为其他模式
+  if (mode == null || mode == 'integrated' || mode == 'local') {
     return LocalBackendApi.create(store: store);
   }
 

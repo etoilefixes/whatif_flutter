@@ -293,14 +293,17 @@ class ModelProvider {
     required this.apiKey,
     this.apiUrl,
     this.models = const <String>[],
+    this.enabled = true,
   });
 
   final String name;
   final String apiKey;
   final String? apiUrl;
   final List<String> models;
+  final bool enabled;
 
   bool get hasKey => apiKey.trim().isNotEmpty;
+  bool get isUsable => enabled && hasKey;
 
   static const Map<String, String> defaultApiUrls = <String, String>{
     'openai': 'https://api.openai.com/v1',
@@ -313,9 +316,15 @@ class ModelProvider {
   static const Map<String, List<String>> defaultModels = <String, List<String>>{
     'openai': <String>['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'],
     'dashscope': <String>['qwen3.5-flash', 'qwen3.5-plus', 'qwen-max'],
-    'anthropic': <String>['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022'],
+    'anthropic': <String>[
+      'claude-sonnet-4-20250514',
+      'claude-3-5-haiku-20241022',
+    ],
     'gemini': <String>['gemini-2.0-flash', 'gemini-2.5-pro-preview-05-06'],
-    'volcengine': <String>['doubao-1-5-pro-32k-250115', 'doubao-1-5-lite-32k-250115'],
+    'volcengine': <String>[
+      'doubao-1-5-pro-32k-250115',
+      'doubao-1-5-lite-32k-250115',
+    ],
   };
 
   static const List<String> knownProviders = <String>[
@@ -335,6 +344,7 @@ class ModelProvider {
       models: models is List<dynamic>
           ? models.whereType<String>().toList()
           : const <String>[],
+      enabled: json['enabled'] as bool? ?? true,
     );
   }
 
@@ -344,6 +354,7 @@ class ModelProvider {
       'apiKey': apiKey,
       if (apiUrl != null && apiUrl!.trim().isNotEmpty) 'apiUrl': apiUrl,
       if (models.isNotEmpty) 'models': models,
+      'enabled': enabled,
     };
   }
 
@@ -352,12 +363,14 @@ class ModelProvider {
     String? apiKey,
     String? apiUrl,
     List<String>? models,
+    bool? enabled,
   }) {
     return ModelProvider(
       name: name ?? this.name,
       apiKey: apiKey ?? this.apiKey,
       apiUrl: apiUrl ?? this.apiUrl,
       models: models ?? this.models,
+      enabled: enabled ?? this.enabled,
     );
   }
 }
