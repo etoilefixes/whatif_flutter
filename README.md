@@ -6,6 +6,8 @@
 
 WhatIf Flutter Client 是一个本地优先的互动叙事客户端，面向 Windows 桌面、Web 和 Android APK 场景。项目把 Flutter 界面、本地集成运行时、`.wpkg` 内容包、`sqflite` 持久化和多模型配置能力整合在一个仓库中，适合继续演进成可交付的本地应用。
 
+本项目的世界观、玩法思路和部分运行时演进路线，来源于原始项目 [ypcypc/WhatIf](https://github.com/ypcypc/WhatIf.git)。当前仓库是在此基础上的 Flutter 客户端与本地运行时延展版本。
+
 ## 功能特性
 
 - ✨ 支持 `.wpkg` 世界包导入、扫描、封面展示和从文本生成内容包
@@ -192,7 +194,9 @@ flutter test
 
 - [Flutter](https://github.com/flutter/flutter)
 - [sqflite](https://github.com/tekartik/sqflite)
-- [ypcypc/WhatIf](https://github.com/ypcypc/WhatIf)
+- [ypcypc/WhatIf](https://github.com/ypcypc/WhatIf.git)
+
+特别感谢原始项目 `ypcypc/WhatIf` 提供的叙事设定、后端能力和演进参考。当前仓库的 Flutter 化、桌面化、APK 化和本地持久化工作，都是在这个基础上继续推进的。
 
 ## 许可证
 
