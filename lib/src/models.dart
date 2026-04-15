@@ -311,6 +311,7 @@ class ModelProvider {
     'anthropic': 'https://api.anthropic.com/v1',
     'gemini': 'https://generativelanguage.googleapis.com/v1beta/openai',
     'volcengine': 'https://ark.cn-beijing.volces.com/api/v3',
+    'nvidia': 'https://integrate.api.nvidia.com/v1',
   };
 
   static const Map<String, List<String>> defaultModels = <String, List<String>>{
@@ -325,6 +326,7 @@ class ModelProvider {
       'doubao-1-5-pro-32k-250115',
       'doubao-1-5-lite-32k-250115',
     ],
+    'nvidia': <String>['meta/llama-3.1-8b-instruct'],
   };
 
   static const List<String> knownProviders = <String>[
@@ -333,6 +335,7 @@ class ModelProvider {
     'anthropic',
     'gemini',
     'volcengine',
+    'nvidia',
   ];
 
   factory ModelProvider.fromJson(Map<String, dynamic> json) {

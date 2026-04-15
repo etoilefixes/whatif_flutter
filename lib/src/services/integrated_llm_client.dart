@@ -18,6 +18,7 @@ class IntegratedLlmClient {
     'anthropic': 'https://api.anthropic.com/v1',
     'gemini': 'https://generativelanguage.googleapis.com/v1beta/openai',
     'volcengine': 'https://ark.cn-beijing.volces.com/api/v3',
+    'nvidia': 'https://integrate.api.nvidia.com/v1',
   };
 
   static const Map<String, String> _defaultTestModels = <String, String>{
@@ -26,6 +27,7 @@ class IntegratedLlmClient {
     'anthropic': 'claude-sonnet-4-20250514',
     'gemini': 'gemini-2.0-flash',
     'volcengine': 'doubao-1-5-pro-32k-250115',
+    'nvidia': 'meta/llama-3.1-8b-instruct',
   };
 
   bool supportsProvider(String provider, {String? apiBase}) {

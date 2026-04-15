@@ -181,6 +181,9 @@ String _completeKnownOfficialBase({
     officialPath = '/compatible-mode/v1';
   } else if (providerKey == 'volcengine' && host.endsWith('.volces.com')) {
     officialPath = '/api/v3';
+  } else if (providerKey == 'nvidia' &&
+      host == 'integrate.api.nvidia.com') {
+    officialPath = '/v1';
   }
 
   if (officialPath == null) {
