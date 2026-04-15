@@ -2,35 +2,36 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite/sqflite.dart' as sqflite;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite_ffi;
 
 import 'storage_backend_contract.dart';
 
 class SqliteStorageBackend implements StorageBackend {
   SqliteStorageBackend._(this._db);
 
-  final Database _db;
+  final sqflite.Database _db;
 
   static Future<SqliteStorageBackend> open({
     String? databasePathOverride,
     bool useInMemoryDatabase = false,
   }) async {
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      sqfliteFfiInit();
-      databaseFactory = databaseFactoryFfi;
+      sqflite_ffi.sqfliteFfiInit();
+      sqflite.databaseFactory = sqflite_ffi.databaseFactoryFfi;
     }
 
     final databasePath = useInMemoryDatabase
-        ? inMemoryDatabasePath
+        ? sqflite.inMemoryDatabasePath
         : databasePathOverride ?? await _defaultDatabasePath();
 
     if (!useInMemoryDatabase) {
       await Directory(p.dirname(databasePath)).create(recursive: true);
     }
 
-    final db = await databaseFactory.openDatabase(
+    final db = await sqflite.databaseFactory.openDatabase(
       databasePath,
-      options: OpenDatabaseOptions(
+      options: sqflite.OpenDatabaseOptions(
         version: 1,
         onCreate: (db, version) async {
           await db.execute('''
@@ -70,7 +71,7 @@ class SqliteStorageBackend implements StorageBackend {
   }
 
   static Future<String> _defaultDatabasePath() async {
-    final databasesPath = await getDatabasesPath();
+    final databasesPath = await sqflite.getDatabasesPath();
     return p.join(databasesPath, 'whatif_local.db');
   }
 
@@ -94,7 +95,7 @@ class SqliteStorageBackend implements StorageBackend {
       'key': key,
       'value': value,
       'updated_at': DateTime.now().millisecondsSinceEpoch,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }, conflictAlgorithm: sqflite.ConflictAlgorithm.replace);
   }
 
   @override
@@ -140,7 +141,7 @@ class SqliteStorageBackend implements StorageBackend {
       'metadata_json': record.metadataJson,
       'state_json': record.stateJson,
       'updated_at': record.updatedAtMs,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }, conflictAlgorithm: sqflite.ConflictAlgorithm.replace);
   }
 
   @override
@@ -192,7 +193,7 @@ class SqliteStorageBackend implements StorageBackend {
       'has_cover': record.hasCover ? 1 : 0,
       'modified_at': record.modifiedAtMs,
       'indexed_at': record.indexedAtMs,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }, conflictAlgorithm: sqflite.ConflictAlgorithm.replace);
   }
 
   @override
